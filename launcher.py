@@ -55,11 +55,19 @@ def _start_api(host: str, port: int) -> None:
 
 
 def _run_self_test() -> int:
-    modules = ["app", "workbench_data", "ia_cli", "gui_app", "env_config", "llm_providers", "updater"]
+    modules = ["app", "workbench_data", "ia_cli", "gui_app", "env_config", "llm_providers", "updater", "view_verifier", "view_store", "view_plausibility", "research_map", "research_archive"]
     for mod in modules:
         __import__(mod)
         print(f"[Self-Test] OK: {mod}")
     print("[Self-Test] All modules imported successfully.")
+    import workbench_data as wd
+    snap, _ = wd.latest_snapshot()
+    assert isinstance(snap, dict)
+    assert isinstance(wd.transmission_edges(), dict)
+    assert isinstance(wd.views_matrix(), dict)
+    assert isinstance(wd.research_archive_rows(), list)
+    print("[Self-Test] workbench_data checks OK.")
+
     return 0
 
 
