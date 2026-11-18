@@ -526,25 +526,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-import os
-import sys
-import json
-import threading
-import subprocess
-import webbrowser
-import tkinter as tk
-from tkinter import ttk, messagebox
-
-ROOT = os.path.dirname(os.path.abspath(__file__))
-_MEIPASS = getattr(sys, "_MEIPASS", None)
-for _p in (ROOT, os.path.join(ROOT, "scripts"), *([_MEIPASS, os.path.join(_MEIPASS, "scripts")] if _MEIPASS else [])):
-    if _p and _p not in sys.path:
-        sys.path.insert(0, _p)
-except Exception:
-ctk = None
-HAS_CTK = False
-try:
-import customtkinter as ctk
-HAS_CTK = True
