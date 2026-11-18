@@ -31,13 +31,13 @@ jobs:
             git fetch upstream
             UPSTREAM_REF=$(git rev-parse --verify upstream/main 2>/dev/null || git rev-parse --verify upstream/master)
             mkdir -p /tmp/custom_backup/.github/workflows
-            for f in llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+            for f in app.py gui_app.py llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
               if [ -f "$f" ]; then
                 cp "$f" "/tmp/custom_backup/$f"
               fi
             done
             git checkout "$UPSTREAM_REF" -- .
-            for f in llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+            for f in app.py gui_app.py llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
               if [ -f "/tmp/custom_backup/$f" ]; then
                 mkdir -p "$(dirname "$f")"
                 cp "/tmp/custom_backup/$f" "$f"
@@ -63,7 +63,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-workbench.txt ]; then pip install -r requirements-workbench.txt; fi
-          pip install streamlit pyinstaller
+          pip install streamlit pyinstaller customtkinter
 
       - name: Build InvestmentAgent-win64.exe
         shell: bash
@@ -74,14 +74,19 @@ jobs:
             --collect-all streamlit \
             --hidden-import llm_providers \
             --hidden-import updater \
+            --paths . --paths scripts --collect-all customtkinter \
+            --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" \
+            --hidden-import workbench_data --hidden-import gui_app --hidden-import app --hidden-import ia_cli --hidden-import env_config \
             launcher.py
           ls -lh dist/InvestmentAgent-win64.exe
-
-      - name: Release v0.26.0
+      - name: Self-test InvestmentAgent-win64.exe
+        run: .\dist\InvestmentAgent-win64.exe --mode self-test
+        
+      - name: Release v0.27.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.26.0
-          name: v0.26.0
+          tag_name: v0.27.0
+          name: Investment Agent v0.27.0 (Modern Chinese GUI & Bugfix)
           files: dist/InvestmentAgent-win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
