@@ -31,13 +31,13 @@ jobs:
             git fetch upstream
             UPSTREAM_REF=$(git rev-parse --verify upstream/main 2>/dev/null || git rev-parse --verify upstream/master)
             mkdir -p /tmp/custom_backup/.github/workflows
-            for f in app.py gui_app.py llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py .github/workflows/release-exe.yml; do
               if [ -f "$f" ]; then
                 cp "$f" "/tmp/custom_backup/$f"
               fi
             done
             git checkout "$UPSTREAM_REF" -- .
-            for f in app.py gui_app.py llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py .github/workflows/release-exe.yml; do
               if [ -f "/tmp/custom_backup/$f" ]; then
                 mkdir -p "$(dirname "$f")"
                 cp "/tmp/custom_backup/$f" "$f"
@@ -63,7 +63,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-workbench.txt ]; then pip install -r requirements-workbench.txt; fi
-          pip install streamlit pyinstaller customtkinter
+          pip install pyinstaller customtkinter
 
       - name: Build InvestmentAgent-win64.exe
         shell: bash
@@ -76,17 +76,17 @@ jobs:
             --hidden-import updater \
             --paths . --paths scripts --collect-all customtkinter \
           --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" --add-data "audit;audit" --add-data "ops;ops" --add-data ".agents;.agents" \
-          --hidden-import workbench_data --hidden-import gui_app --hidden-import app --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
+          --hidden-import workbench_data --hidden-import gui_app --hidden-import data_sources --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
           launcher.py
             ls -lh dist/InvestmentAgent-win64.exe
       - name: Self-test InvestmentAgent-win64.exe
         run: .\dist\InvestmentAgent-win64.exe --mode self-test
 
-      - name: Release v0.28.0
+      - name: Release v0.29.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.28.0
-          name: Investment Agent v0.28.0 (Full 4-Page Native GUI)
+          tag_name: v0.29.0
+          name: Investment Agent v0.29.0 (Pure Native GUI & Data Source API Center)
           files: dist/InvestmentAgent-win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
