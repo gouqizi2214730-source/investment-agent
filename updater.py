@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-APP_VERSION = "0.29.0"
+APP_VERSION = "0.29.1"
 UPSTREAM_REPO = "bojing951-hash/investment-agent"
 DEFAULT_REPO = os.environ.get("INVESTMENT_AGENT_UPDATE_REPO", "gouqizi2214730-source/investment-agent")
 DEFAULT_BRANCH = os.environ.get("INVESTMENT_AGENT_UPDATE_BRANCH", "main")
@@ -116,6 +116,10 @@ def _select_exe_asset(assets: list[dict[str, Any]], exe_name: str) -> dict[str, 
     for asset in assets:
         if str(asset.get("name", "")).lower() == lower_target:
             return asset
+    for preferred in ("investmentagent-setup-win64.exe", "investmentagent-win64.exe"):
+            for asset in assets:
+            if str(asset.get("name", "")).lower() == preferred:
+                return asset
     for asset in assets:
         if str(asset.get("name", "")).lower().endswith(".exe"):
             return asset
