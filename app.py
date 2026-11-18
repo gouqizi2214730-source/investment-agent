@@ -40,7 +40,6 @@ import workbench_data as wd  # noqa: E402
 
 st.set_page_config(page_title='investment-agent 研究工作台',
                    page_icon='🔬', layout='wide')
-st.markdown("<style>.stApp{background:linear-gradient(180deg,#0b1120 0%,#111827 100%);color:#e5e7eb}section[data-testid='stSidebar']{background:#0f172a;border-right:1px solid #1e293b}div[data-testid='stMetric']{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px 14px}</style>", unsafe_allow_html=True)
 
 DISCLAIMER = ('本工作台是宏观**研究工具**: 所有数值来自本地采集数据,可能滞后或有误;'
               '内容不构成投资建议,投资观点请自行形成并担风险。')
@@ -78,19 +77,7 @@ with st.sidebar:
                     label_visibility='collapsed')
     st.divider()
     st.caption(DISCLAIMER)
-    with st.expander('⚙️ 模型 / 8787 API / 更新', expanded=False):
-        import socket as _sock, llm_providers as _lp, updater as _up
-        _cfg = _lp.load_llm_config()
-        _prov = st.selectbox('模型厂商 / 本地服务', list(_lp.PROVIDER_PRESETS.keys()), index=0)
-        _preset = _lp.PROVIDER_PRESETS.get(_prov, {})
-        _url = st.text_input('API Base URL (Ollama/LM Studio/vLLM)', value=_cfg.get('base_url') or getattr(_preset, 'base_url', ''))
-        _model = st.text_input('模型名称', value=_cfg.get('model') or getattr(_preset, 'default_model', ''))
-        _key = st.text_input('API Key', value=_cfg.get('api_key', ''), type='password')
-        if st.button('保存模型配置', use_container_width=True): _lp.save_llm_config({'provider': _prov, 'base_url': _url, 'model': _model, 'api_key': _key}); st.success('已保存')
-        _s = _sock.socket(); _s.settimeout(0.3); _api_ok = (_s.connect_ex(('127.0.0.1', 8787)) == 0); _s.close()
-        st.markdown(f"**8787 本地 API**: {'🟢 运行中' if _api_ok else '⚪ 未启动'} | **版本**: v{_up.APP_VERSION}")
-        if         st.button('检查更新 / 自动升级 EXE', use_container_width=True): _u = _up.check_for_updates(_up.APP_VERSION); st.info(_u.get('message', str(_u)))
-    
+
 
 # ── 页面①: 全球宏观全景 ─────────────────────────────────────────────
 def page_panorama():
