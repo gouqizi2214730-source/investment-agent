@@ -117,7 +117,7 @@ def _select_exe_asset(assets: list[dict[str, Any]], exe_name: str) -> dict[str, 
         if str(asset.get("name", "")).lower() == lower_target:
             return asset
     for preferred in ("investmentagent-setup-win64.exe", "investmentagent-win64.exe"):
-            for asset in assets:
+        for asset in assets:
             if str(asset.get("name", "")).lower() == preferred:
                 return asset
     for asset in assets:
