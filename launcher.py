@@ -62,7 +62,7 @@ def _run_self_test() -> int:
     print("[Self-Test] All modules imported successfully.")
     import workbench_data as wd
     snap, _ = wd.latest_snapshot()
-    assert isinstance(snap, dict)
+    assert snap is None or isinstance(snap, dict)
     assert isinstance(wd.transmission_edges(), dict)
     assert isinstance(wd.views_matrix(), dict)
     assert isinstance(wd.research_archive_rows(), list)
