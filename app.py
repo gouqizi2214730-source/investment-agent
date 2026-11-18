@@ -89,7 +89,7 @@ with st.sidebar:
         if st.button('保存模型配置', use_container_width=True): _lp.save_llm_config({'provider': _prov, 'base_url': _url, 'model': _model, 'api_key': _key}); st.success('已保存')
         _s = _sock.socket(); _s.settimeout(0.3); _api_ok = (_s.connect_ex(('127.0.0.1', 8787)) == 0); _s.close()
         st.markdown(f"**8787 本地 API**: {'🟢 运行中' if _api_ok else '⚪ 未启动'} | **版本**: v{_up.APP_VERSION}")
-                if         st.button('检查更新 / 自动升级 EXE', use_container_width=True): _u = _up.check_for_updates(_up.APP_VERSION); st.info(_u.get('message', str(_u)))
+        if         st.button('检查更新 / 自动升级 EXE', use_container_width=True): _u = _up.check_for_updates(_up.APP_VERSION); st.info(_u.get('message', str(_u)))
     
 
 # ── 页面①: 全球宏观全景 ─────────────────────────────────────────────
