@@ -1,0 +1,87 @@
+name: Build and Release Windows EXE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync upstream repository
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code https://github.com/bojing951-hash/investment-agent.git HEAD >/dev/null 2>&1; then
+            git remote add upstream https://github.com/bojing951-hash/investment-agent.git || git remote set-url upstream https://github.com/bojing951-hash/investment-agent.git
+            git fetch upstream
+            UPSTREAM_REF=$(git rev-parse --verify upstream/main 2>/dev/null || git rev-parse --verify upstream/master)
+            mkdir -p /tmp/custom_backup/.github/workflows
+            for f in llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+              if [ -f "$f" ]; then
+                cp "$f" "/tmp/custom_backup/$f"
+              fi
+            done
+            git checkout "$UPSTREAM_REF" -- .
+            for f in llm_providers.py updater.py launcher.py .github/workflows/release-exe.yml; do
+              if [ -f "/tmp/custom_backup/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp "/tmp/custom_backup/$f" "$f"
+              fi
+            done
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "Sync upstream bojing951-hash/investment-agent [skip ci]"
+              git push origin HEAD:main || true
+            fi
+          else
+            echo "Upstream repo unavailable, continuing with current code."
+          fi
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies and PyInstaller
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-workbench.txt ]; then pip install -r requirements-workbench.txt; fi
+          pip install streamlit pyinstaller
+
+      - name: Build InvestmentAgent-win64.exe
+        shell: bash
+        run: |
+          pyinstaller --noconfirm --clean --onefile \
+            --name InvestmentAgent-win64 \
+            --add-data "*.py;." \
+            --collect-all streamlit \
+            --hidden-import llm_providers \
+            --hidden-import updater \
+            launcher.py
+          ls -lh dist/InvestmentAgent-win64.exe
+
+      - name: Release v0.26.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.26.0
+          name: v0.26.0
+          files: dist/InvestmentAgent-win64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
