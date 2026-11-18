@@ -433,7 +433,7 @@ def make_api_handler(default_config: dict[str, Any] | None = None):
             self._send_json(404, {"error": "Not found"})
 
         def do_POST(self) -> None:
-            if self.path not in (/"v1/chat/completions", "/api/datasources"):
+            if self.path not in ("/v1/chat/completions", "/api/datasources"):
                 self._send_json(404, {"error": "Not found"})
                 return
             length = int(self.headers.get("Content-Length", "0") or 0)
