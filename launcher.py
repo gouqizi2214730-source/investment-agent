@@ -32,7 +32,7 @@ def _setup_paths() -> Path:
 BASE_DIR = _setup_paths()
 
 if False:
-    import app, workbench_data, ia_cli, gui_app, env_config, llm_providers, updater  # noqa: F401
+    import data_sources, workbench_data, ia_cli, gui_app, env_config, llm_providers, updater  # noqa: F401
 
 from llm_providers import load_llm_config, start_local_api_server
 from updater import check_for_updates
@@ -55,7 +55,7 @@ def _start_api(host: str, port: int) -> None:
 
 
 def _run_self_test() -> int:
-    modules = ["app", "workbench_data", "ia_cli", "gui_app", "env_config", "llm_providers", "updater", "view_verifier", "view_store", "view_plausibility", "research_map", "research_archive"]
+    modules = ["data_sources", "workbench_data", "ia_cli", "gui_app", "env_config", "llm_providers", "updater", "view_verifier", "view_store", "view_plausibility", "research_map", "research_archive"]
     for mod in modules:
         __import__(mod)
         print(f"[Self-Test] OK: {mod}")
@@ -67,13 +67,16 @@ def _run_self_test() -> int:
     assert isinstance(wd.views_matrix(), dict)
     assert isinstance(wd.research_archive_rows(), list)
     print("[Self-Test] workbench_data checks OK.")
+    import data_sources
+    assert isinstance(data_sources.list_data_sources(), list)
+    print("[Self-Test] data_sources checks OK.")
 
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Investment Agent 全球宏观投研工作台启动器")
-    parser.add_argument("--mode", choices=["gui", "workbench", "cli", "api", "self-test"], default="gui")
+    parser.add_argument("--mode", choices=["gui" "cli", "api", "self-test"], default="gui")
     parser.add_argument("--api-host", default="127.0.0.1")
     parser.add_argument("--api-port", type=int, default=8787)
     parser.add_argument("--no-api", action="store_true")
@@ -106,10 +109,7 @@ def main() -> int:
         runpy.run_path(str(cli_path), run_name="__main__")
         return 0
 
-    from streamlit.web import cli as stcli
-    app_path = BASE_DIR / "app.py"
-    sys.argv = ["streamlit", "run", str(app_path), "--global.developmentMode=false", *extra]
-    return int(stcli.main() or 0)
+    return 0
 
 
 if __name__ == "__main__":
