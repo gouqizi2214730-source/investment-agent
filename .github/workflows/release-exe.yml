@@ -78,7 +78,7 @@ jobs:
           --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" --add-data "audit;audit" --add-data "ops;ops" --add-data ".agents;.agents" \
           --hidden-import workbench_data --hidden-import gui_app --hidden-import app --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
           launcher.py
-        ls -lh dist/InvestmentAgent-win64.exe
+            ls -lh dist/InvestmentAgent-win64.exe
       - name: Self-test InvestmentAgent-win64.exe
         run: .\dist\InvestmentAgent-win64.exe --mode self-test
 
