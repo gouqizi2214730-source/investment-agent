@@ -23,7 +23,8 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-for p in (ROOT, os.path.join(ROOT, 'scripts')):
+_MEIPASS = getattr(sys, '_MEIPASS', None)
+for p in (ROOT, os.path.join(ROOT, 'scripts')), *([_MEIPASS, os.path.join(_MEIPASS, 'scripts')] if _MEIPASS else []):
     if p not in sys.path:
         sys.path.insert(0, p)
 
