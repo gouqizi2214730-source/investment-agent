@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Investment Agent 全球宏观投研工作台 v0.28.0 原生桌面 GUI 客户端"""
+"""Investment Agent 全球宏观投研工作台 v0.29.0 纯原生桌面 GUI 客户端"""
 
 import os
 import sys
 import json
 import threading
 import subprocess
-import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 _MEIPASS = getattr(sys, "_MEIPASS", None)
-for _p in (
-    ROOT,
-    os.path.join(ROOT, "scripts"),
-    *([_MEIPASS, os.path.join(_MEIPASS, "scripts")] if _MEIPASS else []),
-):
+for _p in (ROOT, os.path.join(ROOT, "scripts"), *([_MEIPASS, os.path.join(_MEIPASS, "scripts")] if _MEIPASS else [])):
     if _p and _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -28,904 +23,450 @@ except Exception:
     ctk = None
     HAS_CTK = False
 
-try:
-    import workbench_data as wd
-except Exception:
-    wd = None
+for _mod_name in ("workbench_data", "env_config", "llm_providers", "updater", "data_sources", "ia_cli"):
+    try:
+        globals()[_mod_name] = __import__(_mod_name)
+    except Exception:
+        globals()[_mod_name] = None
 
-try:
-    import view_store
-except Exception:
-    view_store = None
-
-try:
-    import view_plausibility
-except Exception:
-    view_plausibility = None
-
-try:
-    import view_verifier
-except Exception:
-    view_verifier = None
-
-try:
-    import research_map
-except Exception:
-    research_map = None
-
-try:
-    import research_archive
-except Exception:
-    research_archive = None
-
-try:
-    import env_config
-except Exception:
-    env_config = None
-
-try:
-    import llm_providers
-except Exception:
-    llm_providers = None
-
-try:
-    import updater
-except Exception:
-    updater = None
-
-APP_VERSION = getattr(updater, "APP_VERSION", "0.28.0") if updater else "0.28.0"
+wd = globals().get("workbench_data")
+APP_VERSION = getattr(updater, "APP_VERSION", "0.29.0") if updater else "0.29.0"
 APP_TITLE = f"Investment Agent 全球宏观投研工作台 v{APP_VERSION}"
 
-BG_DARK = "#0f172a"
-BG_PANEL = "#1e293b"
-BG_CARD = "#162032"
-FG_TEXT = "#f8fafc"
-FG_MUTED = "#94a3b8"
-ACCENT = "#38bdf8"
-SUCCESS = "#22c55e"
-WARN = "#f59e0b"
-DANGER = "#ef4444"
-
 NAV_ITEMS = [
-    ("macro", "🌍 全球宏观全景"),
+    ("overview", "🌍 全球宏观全景"),
+    ("analysis", "📈 边际变化·对比・类比"),
     ("transmission", "🕸️ 全球金融传导地图"),
-    ("views", "🏛️ 机构观点矩阵与交叉验证"),
-    ("research", "📜 独立研究结论 (QB 链)"),
-    ("models", "⚙️ 模型与本地 API 中心"),
-    ("updates", "🔄 自动更新与 Web 工作台"),
+    ("views", "🏛️ 机构观点与交叉验证"),
+    ("research", "📜 独立研究与专题档案"),
+    ("datasources", "🔌 数据来源接口中心"),
+    ("settings", "🤖 模型 API 与版本更新"),
 ]
 
-ECONOMY_ORDER = ["US", "CN", "EA", "JP", "GLOBAL", "HK"]
-SERIES_WINDOWS = ["全部", "5年", "1年", "6个月", "3个月", "1个月"]
+BG_DARK = "#0f172a"
+BG_SIDEBAR = "#111827"
+BG_CARD = "#1e293b"
+BG_CARD_ALT = "#263349"
+FG_TEXT = "#f1f5f9"
+FG_MUTED = "#94a3b8"
+ACCENT = "#38bdf8"
+ACCENT_OK = "#34d399"
+ACCENT_WARN = "#fbbf24"
+ACCENT_ERR = "#f87171"
 
 
-def _safe_str(val, default="-"):
-    if val is None or val == "":
-        return default
-    return str(val)
-
-
-def _populate_treeview(tree, rows, columns=None, missing_tag=False):
-    for item in tree.get_children():
-        tree.delete(item)
-    if not rows:
-        tree["columns"] = ("info",)
-        tree.heading("info", text="状态")
-        tree.column("info", width=400, anchor="w")
-        tree.insert("", "end", values=("暂无数据",))
-        return
-    if columns is None:
-        if isinstance(rows[0], dict):
-            columns = list(rows[0].keys())
-        else:
-            columns = ["值"]
-    tree["columns"] = columns
-    for col in columns:
-        tree.heading(col, text=str(col))
-        w = 180 if any(k in str(col) for k in ("指标", "名称", "结论", "标题", "问题", "来源", "渠道", "note")) else 110
-        tree.column(col, width=w, minwidth=70, anchor="w")
-    for row in rows:
-        if isinstance(row, dict):
-            vals = [_safe_str(row.get(c, "")) for c in columns]
-            is_missing = missing_tag and (row.get("当前值") == "缺失" or "缺失" in str(row.get("状态", "")))
-        else:
-            vals = [_safe_str(row)]
-            is_missing = False
-        tags = ("missing",) if is_missing else ()
-        tree.insert("", "end", values=vals, tags=tags)
+def _run_py_module(args, cwd=ROOT):
+    cmd = [sys.executable, *args]
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=180, encoding="utf-8", errors="replace")
+        out = (proc.stdout or "") + ("\n[STDERR]\n" + proc.stderr if proc.stderr else "")
+        return proc.returncode, out.strip()
+    except Exception as exc:
+        return 1, f"执行失败: {exc}"
 
 
 class InvestmentAgentGUI:
-    def __init__(self):
-        if HAS_CTK:
-            ctk.set_appearance_mode("dark")
-            ctk.set_default_color_theme("blue")
-            self.root = ctk.CTk()
-        else:
-            self.root = tk.Tk()
-            self.root.configure(bg=BG_DARK)
+    def __init__(self, root: tk.Tk):
+        self.root = root
         self.root.title(APP_TITLE)
         self.root.geometry("1380x860")
         self.root.minsize(1100, 700)
-
-        self._configure_ttk_style()
+        self.root.configure(bg=BG_DARK)
+        self.current_page = "overview"
         self.nav_buttons = {}
-        self.pages = {}
-        self.current_page = None
-        self.current_econ = "US"
-        self.macro_snap = None
-        self.macro_registry = None
-        self.series_metrics_map = {}
+        self._api_server = None
+        self._setup_style()
+        self._build_layout()
+        self.show_page("overview")
 
-        self._build_shell()
-        self.show_page("macro")
-
-    def _configure_ttk_style(self):
+    def _setup_style(self):
         style = ttk.Style()
         try:
             style.theme_use("clam")
         except Exception:
             pass
-        style.configure(
-            "Treeview",
-            background=BG_CARD,
-            foreground=FG_TEXT,
-            fieldbackground=BG_CARD,
-            rowheight=26,
-            borderwidth=0,
-            font=("Segoe UI", 10),
-        )
-        style.configure(
-            "Treeview.Heading",
-            background=BG_PANEL,
-            foreground=ACCENT,
-            font=("Segoe UI", 10, "bold"),
-            relief="flat",
-        )
-        style.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
+        style.configure("Treeview", background=BG_CARD, foreground=FG_TEXT, fieldbackground=BG_CARD, rowheight=26, borderwidth=0)
+        style.configure("Treeview.Heading", background=BG_CARD_ALT, foreground=ACCENT, relief="flat", font=("Microsoft YaHei UI", 10, "bold"))
+        style.map("Treeview", background=[("selected", "#0284c7")])
+        style.configure("TNotebook", background=BG_DARK, borderwidth=0)
+        style.configure("TNotebook.Tab", background=BG_CARD_ALT, foreground=FG_TEXT, padding=[12, 6])
+        style.map("TNotebook.Tab", background=[("selected", "#0284c7")])
 
-    def _make_frame(self, parent, bg=BG_DARK):
-        if HAS_CTK:
-            return ctk.CTkFrame(parent, fg_color=bg)
-        return tk.Frame(parent, bg=bg)
+    def _build_layout(self):
+        self.sidebar = tk.Frame(self.root, bg=BG_SIDEBAR, width=250)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
 
-    def _make_label(self, parent, text="", font=("Segoe UI", 11), color=FG_TEXT, bg=BG_DARK):
-        if HAS_CTK:
-            return ctk.CTkLabel(parent, text=text, font=font, text_color=color, anchor="w", justify="left")
-        return tk.Label(parent, text=text, font=font, fg=color, bg=bg, anchor="w", justify="left")
-
-    def _make_button(self, parent, text, command, bg="#1d4ed8", width=140):
-        if HAS_CTK:
-            return ctk.CTkButton(parent, text=text, command=command, fg_color=bg, width=width)
-        return tk.Button(parent, text=text, command=command, bg=bg, fg="#ffffff", relief="flat", padx=10, pady=5)
-
-    def _make_treeview(self, parent, height=8):
-        wrap = tk.Frame(parent, bg=BG_CARD)
-        tree = ttk.Treeview(wrap, show="headings", height=height)
-        vsb = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
-        hsb = ttk.Scrollbar(wrap, orient="horizontal", command=tree.xview)
-        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
-        wrap.grid_rowconfigure(0, weight=1)
-        wrap.grid_columnconfigure(0, weight=1)
-        tree.tag_configure("missing", foreground=DANGER)
-        tree.tag_configure("near_zero", foreground=WARN)
-        return wrap, tree
-
-    def _make_textbox(self, parent, height=120):
-        txt = tk.Text(
-            parent,
-            bg=BG_CARD,
-            fg=FG_TEXT,
-            insertbackground=FG_TEXT,
-            relief="flat",
-            wrap="word",
-            font=("Consolas", 10),
-            height=max(4, height // 18),
-        )
-        return txt
-
-    def _build_shell(self):
-        self.root.grid_columnconfigure(1, weight=1)
-        self.root.grid_rowconfigure(0, weight=1)
-
-        sidebar = self._make_frame(self.root, bg=BG_PANEL)
-        sidebar.grid(row=0, column=0, sticky="ns")
-
-        title_lbl = self._make_label(sidebar, f"Investment Agent\nv{APP_VERSION} 桌面工作台", font=("Segoe UI", 14, "bold"), color=ACCENT, bg=BG_PANEL)
-        title_lbl.pack(padx=14, pady=(16, 12), fill="x")
+        hdr = tk.Frame(self.sidebar, bg=BG_SIDEBAR, pady=16, padx=14)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="Investment Agent", bg=BG_SIDEBAR, fg=ACCENT, font=("Microsoft YaHei UI", 14, "bold")).pack(anchor="w")
+        tk.Label(hdr, text=f"v{APP_VERSION} 纯原生桌面端", bg=BG_SIDEBAR, fg=FG_MUTED, font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(2, 0))
 
         for key, label in NAV_ITEMS:
-            btn = self._make_button(
-                sidebar,
+            btn = tk.Button(
+                self.sidebar,
                 text=label,
+                anchor="w",
+                padx=16,
+                pady=10,
+                relief="flat",
+                bd=0,
+                cursor="hand2",
+                font=("Microsoft YaHei UI", 10),
+                bg=BG_SIDEBAR,
+                fg=FG_TEXT,
+                activebackground=BG_CARD_ALT,
+                activeforeground=ACCENT,
                 command=lambda k=key: self.show_page(k),
-                bg="#273549",
-                width=220,
             )
-            btn.pack(padx=12, pady=5, fill="x")
+            btn.pack(fill="x", padx=8, pady=3)
             self.nav_buttons[key] = btn
 
-        self.status_lbl = self._make_label(sidebar, "状态: 就绪", font=("Segoe UI", 10), color=FG_MUTED, bg=BG_PANEL)
-        self.status_lbl.pack(side="bottom", padx=14, pady=12, fill="x")
+        self.status_lbl = tk.Label(self.sidebar, text="本地状态: 就绪", bg=BG_SIDEBAR, fg=ACCENT_OK, font=("Microsoft YaHei UI", 9), wraplength=220, justify="left")
+        self.status_lbl.pack(side="bottom", anchor="w", padx=14, pady=14)
 
-        self.container = self._make_frame(self.root, bg=BG_DARK)
-        self.container.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
-        self.container.grid_rowconfigure(0, weight=1)
-        self.container.grid_columnconfigure(0, weight=1)
+        self.content_wrap = tk.Frame(self.root, bg=BG_DARK)
+        self.content_wrap.pack(side="right", fill="both", expand=True)
 
-    def show_page(self, key):
-        for k, btn in self.nav_buttons.items():
-            color = "#0284c7" if k == key else "#273549"
-            if HAS_CTK:
-                btn.configure(fg_color=color)
-            else:
-                btn.configure(bg=color)
-        for p in self.pages.values():
-            p.grid_forget()
-        if key not in self.pages:
-            builder = {
-                "macro": self._build_macro_page,
-                "transmission": self._build_transmission_page,
-                "views": self._build_views_page,
-                "research": self._build_research_page,
-                "models": self._build_models_page,
-                "updates": self._build_updates_page,
-            }[key]
-            self.pages[key] = builder()
-        self.pages[key].grid(row=0, column=0, sticky="nsew")
+    def _clear_content(self):
+        for w in self.content_wrap.winfo_children():
+            w.destroy()
+
+    def _make_scrollable(self, parent):
+        canvas = tk.Canvas(parent, bg=BG_DARK, highlightthickness=0)
+        sb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=BG_DARK)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win, width=e.width))
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        return inner
+
+    def _header(self, parent, title, subtitle=""):
+        box = tk.Frame(parent, bg=BG_DARK, padx=20, pady=14)
+        box.pack(fill="x")
+        tk.Label(box, text=title, bg=BG_DARK, fg=FG_TEXT, font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        if subtitle:
+            tk.Label(box, text=subtitle, bg=BG_DARK, fg=FG_MUTED, font=("Microsoft YaHei UI", 10)).pack(anchor="w", pady=(4, 0))
+
+    def _tree(self, parent, cols, rows, height=10, tag_fn=None):
+        frm = tk.Frame(parent, bg=BG_CARD, padx=10, pady=8)
+        frm.pack(fill="both", expand=True, padx=20, pady=6)
+        tv = ttk.Treeview(frm, columns=cols, show="headings", height=height)
+        for c in cols:
+            tv.heading(c, text=c)
+            tv.column(c, width=max(95, 900 // max(1, len(cols))), anchor="w")
+        tv.tag_configure("missing", foreground=ACCENT_ERR)
+        tv.tag_configure("ok", foreground=ACCENT_OK)
+        tv.tag_configure("warn", foreground=ACCENT_WARN)
+        for r in rows:
+            vals = [str(r.get(c, "") if isinstance(r, dict) else r[i]) for i, c in enumerate(cols)]
+            tags = tag_fn(r) if tag_fn else ()
+            tv.insert("", "end", values=vals, tags=tags)
+        vsb = ttk.Scrollbar(frm, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=vsb.set)
+        tv.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        return tv
+
+    def show_page(self, key: str):
         self.current_page = key
-
-    def _build_macro_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        page.grid_rowconfigure(1, weight=1)
-        page.grid_columnconfigure(0, weight=1)
-
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 6))
-        self._make_label(hdr, "🌍 全球宏观全景 (Global Macro Panorama)", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
-        self._make_button(hdr, "刷新快照", self._refresh_macro_page, bg="#0284c7", width=100).pack(side="right", padx=12, pady=6)
-
-        canvas_scroll = tk.Canvas(page, bg=BG_DARK, highlightthickness=0)
-        vsb = ttk.Scrollbar(page, orient="vertical", command=canvas_scroll.yview)
-        body = tk.Frame(canvas_scroll, bg=BG_DARK)
-        body.bind("<Configure>", lambda e: canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all")))
-        canvas_scroll.create_window((0, 0), window=body, anchor="nw")
-        canvas_scroll.configure(yscrollcommand=vsb.set)
-        canvas_scroll.grid(row=1, column=0, sticky="nsew")
-        vsb.grid(row=1, column=1, sticky="ns")
-        body.grid_columnconfigure(0, weight=1)
-
-        self.macro_meta_lbl = self._make_label(body, "正在加载快照元数据...", font=("Segoe UI", 11), color=FG_TEXT, bg=BG_DARK)
-        self.macro_meta_lbl.grid(row=0, column=0, sticky="ew", padx=8, pady=4)
-
-        self.macro_matrix_note_lbl = self._make_label(body, "【经济体×维度覆盖表】", font=("Segoe UI", 12, "bold"), color=ACCENT, bg=BG_DARK)
-        self.macro_matrix_note_lbl.grid(row=1, column=0, sticky="ew", padx=8, pady=(8, 2))
-        mx_wrap, self.macro_matrix_tree = self._make_treeview(body, height=6)
-        mx_wrap.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
-
-        econ_bar = self._make_frame(body, bg=BG_DARK)
-        econ_bar.grid(row=3, column=0, sticky="ew", padx=8, pady=(10, 4))
-        self._make_label(econ_bar, "经济体切换:", font=("Segoe UI", 11, "bold"), color=FG_TEXT, bg=BG_DARK).pack(side="left", padx=(0, 8))
-        self.econ_btns = {}
-        labels_map = getattr(wd, "ECONOMY_LABELS", {}) if wd else {}
-        for ec in ECONOMY_ORDER:
-            lbl = labels_map.get(ec, ec)
-            b = self._make_button(econ_bar, f"{ec} ({lbl})", lambda e=ec: self._select_macro_econ(e), bg="#273549", width=110)
-            b.pack(side="left", padx=3)
-            self.econ_btns[ec] = b
-
-        self.macro_econ_stat_lbl = self._make_label(body, "指标详情:", font=("Segoe UI", 11), color=WARN, bg=BG_DARK)
-        self.macro_econ_stat_lbl.grid(row=4, column=0, sticky="ew", padx=8, pady=2)
-        ov_wrap, self.macro_overview_tree = self._make_treeview(body, height=8)
-        ov_wrap.grid(row=5, column=0, sticky="ew", padx=8, pady=4)
-
-        self._make_label(body, "【市场 1m/3m/1y/5y 多窗口变化表】", font=("Segoe UI", 12, "bold"), color=ACCENT, bg=BG_DARK).grid(row=6, column=0, sticky="ew", padx=8, pady=(10, 2))
-        mw_wrap, self.macro_mkt_tree = self._make_treeview(body, height=7)
-        mw_wrap.grid(row=7, column=0, sticky="ew", padx=8, pady=4)
-
-        chart_ctrl = self._make_frame(body, bg=BG_PANEL)
-        chart_ctrl.grid(row=8, column=0, sticky="ew", padx=8, pady=(10, 4))
-        self._make_label(chart_ctrl, "历史走势折线图:", font=("Segoe UI", 12, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=8, pady=6)
-        self.series_metric_var = tk.StringVar(value="")
-        self.series_metric_cb = ttk.Combobox(chart_ctrl, textvariable=self.series_metric_var, state="readonly", width=36)
-        self.series_metric_cb.pack(side="left", padx=6, pady=6)
-        self.series_metric_cb.bind("<<ComboboxSelected>>", lambda _e: self._draw_macro_chart())
-
-        self.series_window_var = tk.StringVar(value="1年")
-        self.series_window_cb = ttk.Combobox(chart_ctrl, textvariable=self.series_window_var, values=SERIES_WINDOWS, state="readonly", width=10)
-        self.series_window_cb.pack(side="left", padx=6, pady=6)
-        self.series_window_cb.bind("<<ComboboxSelected>>", lambda _e: self._draw_macro_chart())
-
-        self.series_caption_lbl = self._make_label(chart_ctrl, "", font=("Segoe UI", 10), color=SUCCESS, bg=BG_PANEL)
-        self.series_caption_lbl.pack(side="left", padx=10)
-
-        self.macro_chart_canvas = tk.Canvas(body, bg=BG_CARD, height=260, highlightthickness=1, highlightbackground="#334155")
-        self.macro_chart_canvas.grid(row=9, column=0, sticky="ew", padx=8, pady=(2, 16))
-        self.macro_chart_canvas.bind("<Configure>", lambda _e: self._draw_macro_chart())
-
-        self._refresh_macro_page()
-        return page
-
-    def _refresh_macro_page(self):
-        if wd is None:
-            self.macro_meta_lbl.configure(text="错误: workbench_data 模块未加载")
-            return
-        try:
-            snap, note = wd.latest_snapshot()
-            registry = wd.load_registry()
-            meta = wd.snapshot_meta(snap)
-            self.macro_snap = snap
-            self.macro_registry = registry
-        except Exception as exc:
-            self.macro_meta_lbl.configure(text=f"加载快照失败: {exc}")
-            return
-
-        snap_date = meta.get("date") or meta.get("snapshot_date") or "-"
-        gate_a = meta.get("gate_a_status") or meta.get("gate_a") or meta.get("gate_status") or "-"
-        missing_cnt = meta.get("missing_count", meta.get("missing", "-"))
-        degraded_cnt = meta.get("degraded_count", meta.get("degraded", "-"))
-        meta_text = f"快照日期: {snap_date}  |  Gate A 状态: {gate_a}  |  缺失: {missing_cnt}  |  降级: {degraded_cnt}  |  备注: {note or '-'}"
-        self.macro_meta_lbl.configure(text=meta_text)
-
-        try:
-            mx = wd.economy_dimension_matrix(snap, registry)
-            mx_rows = mx.get("rows", []) if isinstance(mx, dict) else []
-            mx_note = mx.get("note", "") if isinstance(mx, dict) else ""
-            self.macro_matrix_note_lbl.configure(text=f"【经济体×维度覆盖表】 {mx_note}")
-            _populate_treeview(self.macro_matrix_tree, mx_rows)
-        except Exception as exc:
-            self.macro_matrix_note_lbl.configure(text=f"【经济体×维度覆盖表】加载失败: {exc}")
-
-        try:
-            mw_rows = wd.market_window_rows(snap, registry)
-            _populate_treeview(self.macro_mkt_tree, mw_rows, missing_tag=True)
-        except Exception:
-            _populate_treeview(self.macro_mkt_tree, [])
-
-        try:
-            capable = wd.series_capable_metrics(snap, registry) or []
-            self.series_metrics_map = {}
-            display_list = []
-            for item in capable:
-                if isinstance(item, dict):
-                    mid = item.get("id") or item.get("metric_id") or item.get("code") or ""
-                    mname = item.get("name") or item.get("label") or mid
-                else:
-                    mid = str(item)
-                    mname = mid
-                label = f"{mid} - {mname}" if mname != mid else mid
-                self.series_metrics_map[label] = mid
-                display_list.append(label)
-            self.series_metric_cb["values"] = display_list
-            if display_list and self.series_metric_var.get() not in self.series_metrics_map:
-                self.series_metric_var.set(display_list[0])
-        except Exception:
-            self.series_metric_cb["values"] = []
-
-        self._select_macro_econ(self.current_econ)
-        self._draw_macro_chart()
-
-    def _select_macro_econ(self, econ):
-        self.current_econ = econ
-        for ec, b in self.econ_btns.items():
-            c = "#0284c7" if ec == econ else "#273549"
-            if HAS_CTK:
-                b.configure(fg_color=c)
-            else:
-                b.configure(bg=c)
-        if wd is None or self.macro_snap is None:
-            return
-        try:
-            rows = wd.overview_rows(self.macro_snap, self.macro_registry, econ) or []
-            missing_n = sum(1 for r in rows if isinstance(r, dict) and r.get("当前值") == "缺失")
-            labels_map = getattr(wd, "ECONOMY_LABELS", {})
-            econ_name = labels_map.get(econ, econ)
-            self.macro_econ_stat_lbl.configure(
-                text=f"当前经济体: {econ} ({econ_name})  |  总指标数: {len(rows)}  |  当前值 == '缺失' 项数: {missing_n}"
-            )
-            _populate_treeview(self.macro_overview_tree, rows, missing_tag=True)
-        except Exception as exc:
-            self.macro_econ_stat_lbl.configure(text=f"加载 {econ} 指标失败: {exc}")
-
-    def _draw_macro_chart(self):
-        c = self.macro_chart_canvas
-        c.delete("all")
-        w = max(c.winfo_width(), 640)
-        h = max(c.winfo_height(), 240)
-        if wd is None or self.macro_snap is None:
-            return
-        label = self.series_metric_var.get()
-        metric_id = self.series_metrics_map.get(label)
-        window = self.series_window_var.get() or "1年"
-        if not metric_id:
-            c.create_text(w // 2, h // 2, text="请选择可绘制历史序列的指标", fill=FG_MUTED, font=("Segoe UI", 11))
-            return
-        try:
-            res = wd.metric_series(metric_id, self.macro_snap)
-            if isinstance(res, dict):
-                dates, values = res.get("dates", []), res.get("values", [])
-            else:
-                dates, values = res[0], res[1]
-            sliced = wd.slice_series_window(dates, values, window)
-            if isinstance(sliced, dict):
-                d_sub, v_sub = sliced.get("dates", []), sliced.get("values", [])
-            else:
-                d_sub, v_sub = sliced[0], sliced[1]
-            try:
-                cap = wd.series_change_caption(d_sub, v_sub)
-            except TypeError:
-                cap = wd.series_change_caption(dates, values, window)
-            self.series_caption_lbl.configure(text=_safe_str(cap, ""))
-        except Exception as exc:
-            c.create_text(w // 2, h // 2, text=f"序列加载失败: {exc}", fill=DANGER, font=("Segoe UI", 10))
-            return
-
-        pts = [(d, float(v)) for d, v in zip(d_sub, v_sub) if v is not None]
-        if len(pts) < 2:
-            c.create_text(w // 2, h // 2, text="有效数据点不足 2 个，无法绘制折线", fill=FG_MUTED, font=("Segoe UI", 11))
-            return
-
-        pad_l, pad_r, pad_t, pad_b = 65, 25, 22, 32
-        pw = max(w - pad_l - pad_r, 50)
-        ph = max(h - pad_t - pad_b, 50)
-        ys = [p[1] for p in pts]
-        ymin, ymax = min(ys), max(ys)
-        if ymax == ymin:
-            ymax = ymin + 1.0
-
-        c.create_line(pad_l, pad_t, pad_l, h - pad_b, fill="#475569")
-        c.create_line(pad_l, h - pad_b, w - pad_r, h - pad_b, fill="#475569")
-        for i in range(4):
-            gy = pad_t + ph * i / 3.0
-            val = ymax - (ymax - ymin) * i / 3.0
-            c.create_line(pad_l, gy, w - pad_r, gy, fill="#1e293b", dash=(2, 4))
-            c.create_text(pad_l - 6, gy, text=f"{val:.2f}", anchor="e", fill=FG_MUTED, font=("Consolas", 9))
-
-        coords = []
-        n = len(pts)
-        for idx, (_d, yv) in enumerate(pts):
-            px = pad_l + pw * idx / (n - 1)
-            py = pad_t + ph * (1.0 - (yv - ymin) / (ymax - ymin))
-            coords.extend([px, py])
-        c.create_line(*coords, fill=ACCENT, width=2, smooth=False)
-        c.create_text(pad_l, h - 14, text=str(pts[0][0]), anchor="w", fill=FG_MUTED, font=("Consolas", 9))
-        c.create_text(w - pad_r, h - 14, text=str(pts[-1][0]), anchor="e", fill=FG_MUTED, font=("Consolas", 9))
-
-    def _build_transmission_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        page.grid_rowconfigure(2, weight=1)
-        page.grid_columnconfigure(0, weight=1)
-
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 6))
-        self._make_label(hdr, "🕸️ 全球金融传导地图 (Transmission Edges)", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
-        self._make_button(hdr, "刷新传导图", self._refresh_transmission_page, bg="#0284c7", width=110).pack(side="right", padx=12, pady=6)
-
-        self.trans_rule_lbl = self._make_label(page, "证据分级与展示规则加载中...", font=("Segoe UI", 10), color=FG_TEXT, bg=BG_DARK)
-        self.trans_rule_lbl.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-
-        paned = ttk.PanedWindow(page, orient="vertical")
-        paned.grid(row=2, column=0, sticky="nsew", padx=4, pady=4)
-
-        f_strong = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_strong, "强传导边 (strong)", font=("Segoe UI", 12, "bold"), color=SUCCESS, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        sw, self.trans_strong_tree = self._make_treeview(f_strong, height=7)
-        sw.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_strong, weight=2)
-
-        f_nz = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_nz, "⚠️ 近零 / 不支持渠道 (near_zero) —— 【本地数据不支持】", font=("Segoe UI", 12, "bold"), color=WARN, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        nw, self.trans_nz_tree = self._make_treeview(f_nz, height=6)
-        nw.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_nz, weight=2)
-
-        f_sum = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_sum, "结构性总结与机制发现 (structural_summary & mechanism_findings)", font=("Segoe UI", 11, "bold"), color=ACCENT, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        self.trans_summary_txt = self._make_textbox(f_sum, height=120)
-        self.trans_summary_txt.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_sum, weight=1)
-
-        self._refresh_transmission_page()
-        return page
-
-    def _refresh_transmission_page(self):
-        if wd is None:
-            return
-        try:
-            doc = wd.transmission_edges() or {}
-        except Exception as exc:
-            self.trans_rule_lbl.configure(text=f"加载传导边失败: {exc}")
-            return
-
-        grading = doc.get("evidence_grading", {})
-        rule = doc.get("display_rule", "")
-        g_str = " | ".join(f"{k}: {v}" for k, v in grading.items()) if isinstance(grading, dict) else str(grading)
-        self.trans_rule_lbl.configure(text=f"证据分级 (E1/E2/E3): {g_str}\n展示规则: {rule}")
-
-        def _fmt_edges(edges, is_nz=False):
-            out = []
-            for e in (edges or []):
-                qb = e.get("qb_source", "")
-                try:
-                    badge = wd.edge_verification_badge(qb)
-                except Exception:
-                    badge = qb
-                row = {
-                    "传导路径": f"{e.get('from', '')} -> {e.get('to', '')}",
-                    "渠道名称": e.get("channel_label", ""),
-                    "r": e.get("r", ""),
-                    "n": e.get("n", ""),
-                    "window": e.get("window", ""),
-                    "evidence_level": e.get("evidence_level", ""),
-                    "qb_source": qb,
-                    "验证徽章": badge,
-                }
-                if is_nz:
-                    row["数据支持状态"] = "本地数据不支持"
-                out.append(row)
-            return out
-
-        _populate_treeview(self.trans_strong_tree, _fmt_edges(doc.get("strong", []), False))
-        _populate_treeview(self.trans_nz_tree, _fmt_edges(doc.get("near_zero", []), True))
-
-        self.trans_summary_txt.delete("1.0", "end")
-        s_sum = doc.get("structural_summary", "")
-        m_find = doc.get("mechanism_findings", "")
-        text_out = f"=== structural_summary ===\n{json.dumps(s_sum, ensure_ascii=False, indent=2) if isinstance(s_sum, (dict, list)) else s_sum}\n\n"
-        text_out += f"=== mechanism_findings ===\n{json.dumps(m_find, ensure_ascii=False, indent=2) if isinstance(m_find, (dict, list)) else m_find}"
-        self.trans_summary_txt.insert("1.0", text_out)
-
-    def _build_views_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        page.grid_rowconfigure(2, weight=1)
-        page.grid_columnconfigure(0, weight=1)
-
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 6))
-        self._make_label(hdr, "🏛️ 机构观点矩阵与交叉验证 (Views Matrix & Verifier)", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
-        self._make_button(hdr, "运行确定性交叉验证 (view_verifier)", self._run_view_verifier, bg="#059669", width=240).pack(side="right", padx=8, pady=6)
-        self._make_button(hdr, "刷新矩阵", self._refresh_views_page, bg="#0284c7", width=100).pack(side="right", padx=6, pady=6)
-
-        self.views_meta_lbl = self._make_label(page, "正在加载机构观点矩阵...", font=("Segoe UI", 10), color=FG_TEXT, bg=BG_DARK)
-        self.views_meta_lbl.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-
-        paned = ttk.PanedWindow(page, orient="vertical")
-        paned.grid(row=2, column=0, sticky="nsew", padx=4, pady=4)
-
-        f_top = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_top, "机构观点列表 (点击行查看 core_views / forecasts 与机构明示/AI推导标注)", font=("Segoe UI", 11, "bold"), color=ACCENT, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        vw, self.views_tree = self._make_treeview(f_top, height=7)
-        vw.pack(fill="both", expand=True, padx=6, pady=2)
-        self.views_tree.bind("<<TreeviewSelect>>", self._on_select_view)
-        paned.add(f_top, weight=2)
-
-        f_mid = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_mid, "选中机构观点详情 (🏛️ 机构明示 vs 🤖 AI 推导)", font=("Segoe UI", 11, "bold"), color=SUCCESS, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        self.view_detail_txt = self._make_textbox(f_mid, height=160)
-        self.view_detail_txt.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_mid, weight=2)
-
-        f_bot = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_bot, "确定性验证：【快照事实 + 区间变动证据表（零 AI 判断）】与 view_plausibility 结果", font=("Segoe UI", 11, "bold"), color=WARN, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        self.view_verify_txt = self._make_textbox(f_bot, height=160)
-        self.view_verify_txt.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_bot, weight=2)
-
-        self.views_rows_cache = []
-        self._refresh_views_page()
-        return page
-
-    def _refresh_views_page(self):
-        if wd is None:
-            return
-        try:
-            vm = wd.views_matrix() or {}
-        except Exception as exc:
-            self.views_meta_lbl.configure(text=f"加载 views_matrix 失败: {exc}")
-            return
-        sv = vm.get("schema_version", "-")
-        matrix = vm.get("matrix", {})
-        rows = vm.get("rows", [])
-        self.views_rows_cache = rows
-        m_keys = len(matrix) if isinstance(matrix, (dict, list)) else 0
-        self.views_meta_lbl.configure(text=f"Schema 版本: {sv}  |  矩阵维度项: {m_keys}  |  机构观点行数: {len(rows)}")
-        _populate_treeview(self.views_tree, rows)
-
-    def _on_select_view(self, _event=None):
-        sel = self.views_tree.selection()
-        if not sel:
-            return
-        idx = self.views_tree.index(sel[0])
-        if idx >= len(self.views_rows_cache):
-            return
-        row = self.views_rows_cache[idx]
-        view_id = row.get("view_id") or row.get("id") or ""
-        self.view_detail_txt.delete("1.0", "end")
-        if view_store is None or not view_id:
-            self.view_detail_txt.insert("1.0", json.dumps(row, ensure_ascii=False, indent=2))
-            return
-        try:
-            doc = view_store.get_view(view_id) or {}
-        except Exception as exc:
-            self.view_detail_txt.insert("1.0", f"get_view({view_id}) 失败: {exc}")
-            return
-
-        def _tag_source(item):
-            if not isinstance(item, dict):
-                return str(item)
-            src = item.get("attribution") or item.get("source_type") or item.get("type") or ""
-            badge = "🏛️ 机构明示" if src == "institution_stated" else ("🤖 AI 推导" if src == "ai_inferred" else src)
-            return f"[{badge}] {json.dumps(item, ensure_ascii=False)}"
-
-        lines = [f"view_id: {view_id}", "=== core_views ==="]
-        for cv in (doc.get("core_views") or []):
-            lines.append("  • " + _tag_source(cv))
-        lines.append("\n=== forecasts ===")
-        for fc in (doc.get("forecasts") or []):
-            lines.append("  • " + _tag_source(fc))
-        self.view_detail_txt.insert("1.0", "\n".join(lines))
-
-    def _run_view_verifier(self):
-        self.view_verify_txt.delete("1.0", "end")
-        self.view_verify_txt.insert("1.0", "正在运行确定性交叉验证 (view_verifier & view_plausibility)...")
-
-        def _worker():
-            out_parts = []
-            verifier_script = os.path.join(ROOT, "scripts", "view_verifier.py")
-            if os.path.exists(verifier_script):
-                try:
-                    proc = subprocess.run(
-                        [sys.executable, verifier_script, "--mode", "all"],
-                        capture_output=True, text=True, timeout=30, cwd=ROOT,
-                    )
-                    out_parts.append("=== view_verifier.py --mode all ===")
-                    out_parts.append(proc.stdout or proc.stderr or "(无输出)")
-                except Exception as exc:
-                    out_parts.append(f"view_verifier 子进程异常: {exc}")
-            elif view_verifier is not None:
-                out_parts.append(f"=== view_verifier 模块已加载: {dir(view_verifier)[:8]} ===")
-
-            if view_plausibility is not None:
-                try:
-                    if hasattr(view_plausibility, "check_all"):
-                        res = view_plausibility.check_all()
-                        out_parts.append("\n=== view_plausibility.check_all() ===")
-                        out_parts.append(json.dumps(res, ensure_ascii=False, indent=2))
-                    else:
-                        out_parts.append("\n=== view_plausibility 模块可用 ===")
-                except Exception as exc:
-                    out_parts.append(f"\nview_plausibility 异常: {exc}")
-
-            final_txt = "\n".join(out_parts) or "未检测到可执行的验证结果。"
-            self.root.after(0, lambda: (self.view_verify_txt.delete("1.0", "end"), self.view_verify_txt.insert("1.0", final_txt)))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _build_research_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        page.grid_rowconfigure(2, weight=1)
-        page.grid_columnconfigure(0, weight=1)
-
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 6))
-        self._make_label(hdr, "📜 独立研究结论 (QB 链 & Agent Native 研究)", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
-        self._make_button(hdr, "刷新研究档案", self._refresh_research_page, bg="#0284c7", width=120).pack(side="right", padx=12, pady=6)
-
-        trig = self._make_frame(page, bg=BG_PANEL)
-        trig.grid(row=1, column=0, sticky="ew", padx=4, pady=(0, 6))
-        self._make_label(trig, "Agent Native 专题研究触发:", font=("Segoe UI", 11, "bold"), color=FG_TEXT, bg=BG_PANEL).pack(side="left", padx=10, pady=6)
-        self.research_topic_var = tk.StringVar(value="")
-        ent = tk.Entry(trig, textvariable=self.research_topic_var, bg=BG_CARD, fg=FG_TEXT, insertbackground=FG_TEXT, width=52, font=("Segoe UI", 10))
-        ent.pack(side="left", padx=8, pady=6)
-        self._make_button(trig, "触发专题研究", self._run_topic_research, bg="#7c3aed", width=130).pack(side="left", padx=6, pady=6)
-
-        paned = ttk.PanedWindow(page, orient="vertical")
-        paned.grid(row=2, column=0, sticky="nsew", padx=4, pady=4)
-
-        f_map = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_map, "研究地图与问题分层 (research_questions & research_map.build_map)", font=("Segoe UI", 11, "bold"), color=ACCENT, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        self.research_map_txt = self._make_textbox(f_map, height=130)
-        self.research_map_txt.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_map, weight=1)
-
-        f_arch = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_arch, "本地 Append-Only 研究档案 (QB 链, 点击行查看完整结论与证据链)", font=("Segoe UI", 11, "bold"), color=SUCCESS, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        aw, self.research_tree = self._make_treeview(f_arch, height=7)
-        aw.pack(fill="both", expand=True, padx=6, pady=2)
-        self.research_tree.bind("<<TreeviewSelect>>", self._on_select_research)
-        paned.add(f_arch, weight=2)
-
-        f_full = self._make_frame(paned, bg=BG_DARK)
-        self._make_label(f_full, "完整研究结论与证据链 (load_research_full)", font=("Segoe UI", 11, "bold"), color=WARN, bg=BG_DARK).pack(anchor="w", padx=6, pady=2)
-        self.research_full_txt = self._make_textbox(f_full, height=160)
-        self.research_full_txt.pack(fill="both", expand=True, padx=6, pady=2)
-        paned.add(f_full, weight=2)
-
-        self.research_rows_cache = []
-        self._refresh_research_page()
-        return page
-
-    def _refresh_research_page(self):
-        self.research_map_txt.delete("1.0", "end")
-        parts = []
-        if wd is not None:
-            try:
-                qs = wd.research_questions()
-                parts.append("=== research_questions() ===")
-                parts.append(json.dumps(qs, ensure_ascii=False, indent=2))
-            except Exception as exc:
-                parts.append(f"research_questions 失败: {exc}")
-        if research_map is not None:
-            try:
-                rmap = research_map.build_map()
-                parts.append("\n=== research_map.build_map() ===")
-                parts.append(json.dumps(rmap, ensure_ascii=False, indent=2))
-            except Exception as exc:
-                parts.append(f"research_map.build_map 失败: {exc}")
-        self.research_map_txt.insert("1.0", "\n".join(parts))
-
-        if wd is not None:
-            try:
-                rows = wd.research_archive_rows(limit=100) or []
-                self.research_rows_cache = rows
-                _populate_treeview(self.research_tree, rows)
-            except Exception:
-                _populate_treeview(self.research_tree, [])
-
-    def _on_select_research(self, _event=None):
-        sel = self.research_tree.selection()
-        if not sel:
-            return
-        idx = self.research_tree.index(sel[0])
-        if idx >= len(self.research_rows_cache):
-            return
-        row = self.research_rows_cache[idx]
-        qid = row.get("query_id") or row.get("id") or ""
-        self.research_full_txt.delete("1.0", "end")
-        if research_archive is None or not qid:
-            self.research_full_txt.insert("1.0", json.dumps(row, ensure_ascii=False, indent=2))
-            return
-        try:
-            full = research_archive.load_research_full(qid)
-            self.research_full_txt.insert("1.0", json.dumps(full, ensure_ascii=False, indent=2) if isinstance(full, (dict, list)) else str(full))
-        except Exception as exc:
-            self.research_full_txt.insert("1.0", f"load_research_full({qid}) 失败: {exc}")
-
-    def _run_topic_research(self):
-        topic = self.research_topic_var.get().strip()
-        if not topic:
-            messagebox.showinfo("提示", "请输入要研究的宏观专题问题。")
-            return
-        self.status_lbl.configure(text=f"正在研究: {topic[:18]}...")
-
-        def _worker():
-            ia_script = os.path.join(ROOT, "ia_cli.py")
-            try:
-                proc = subprocess.run(
-                    [sys.executable, ia_script, "research", topic],
-                    capture_output=True, text=True, timeout=60, cwd=ROOT,
-                )
-                msg = proc.stdout or proc.stderr or "研究执行完成"
-            except Exception as exc:
-                msg = f"专题研究执行失败: {exc}"
-            self.root.after(0, lambda: (
-                self.status_lbl.configure(text="状态: 就绪"),
-                self.research_full_txt.delete("1.0", "end"),
-                self.research_full_txt.insert("1.0", msg),
-                self._refresh_research_page(),
-            ))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _build_models_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.pack(fill="x", padx=4, pady=(0, 8))
-        self._make_label(hdr, "⚙️ 模型与本地 API 中心 (Ollama / LM Studio / vLLM / 8787)", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
-
-        form = self._make_frame(page, bg=BG_CARD)
-        form.pack(fill="x", padx=8, pady=6)
-        providers = list(getattr(llm_providers, "PROVIDERS", {}).keys()) if llm_providers else ["ollama", "lmstudio", "vllm", "openai", "deepseek", "anthropic", "gemini"]
-        default_url = "http:" + "//127.0.0.1:11434/v1"
-        self.prov_var = tk.StringVar(value=providers[0] if providers else "ollama")
-        self.base_url_var = tk.StringVar(value=os.environ.get("OPENAI_BASE_URL", default_url))
-        self.api_key_var = tk.StringVar(value=os.environ.get("OPENAI_API_KEY", ""))
-        self.model_var = tk.StringVar(value=os.environ.get("IA_MODEL", "qwen2.5:14b"))
-
-        for r, (lbl, var) in enumerate([("厂商/后端:", self.prov_var), ("Base URL:", self.base_url_var), ("API Key:", self.api_key_var), ("默认模型:", self.model_var)]):
-            self._make_label(form, lbl, font=("Segoe UI", 11), color=FG_TEXT, bg=BG_CARD).grid(row=r, column=0, padx=12, pady=6, sticky="w")
-            if r == 0:
-                ttk.Combobox(form, textvariable=var, values=providers, state="readonly", width=42).grid(row=r, column=1, padx=8, pady=6, sticky="w")
-            else:
-                tk.Entry(form, textvariable=var, bg=BG_DARK, fg=FG_TEXT, insertbackground=FG_TEXT, width=46, show="*" if r == 2 else "").grid(row=r, column=1, padx=8, pady=6, sticky="w")
-
-        btns = self._make_frame(page, bg=BG_DARK)
-        btns.pack(fill="x", padx=8, pady=8)
-        self._make_button(btns, "保存配置到 .env", self._save_model_env, bg="#059669", width=150).pack(side="left", padx=6)
-        self._make_button(btns, "启动 8787 本地 API", self._start_local_api, bg="#0284c7", width=160).pack(side="left", padx=6)
-        self.api_status_lbl = self._make_label(page, "本地 API (127.0.0.1:8787): 未启动", font=("Segoe UI", 11), color=FG_MUTED, bg=BG_DARK)
-        self.api_status_lbl.pack(anchor="w", padx=12, pady=6)
-        return page
-
-    def _save_model_env(self):
-        updates = {
-            "IA_PROVIDER": self.prov_var.get(),
-            "OPENAI_BASE_URL": self.base_url_var.get().strip(),
-            "OPENAI_API_KEY": self.api_key_var.get().strip(),
-            "IA_MODEL": self.model_var.get().strip(),
+        for k, b in self.nav_buttons.items():
+            b.configure(bg=BG_CARD_ALT if k == key else BG_SIDEBAR, fg=ACCENT if k == key else FG_TEXT)
+        self._clear_content()
+        builders = {
+            "overview": self._build_overview,
+            "analysis": self._build_analysis,
+            "transmission": self._build_transmission,
+            "views": self._build_views,
+            "research": self._build_research,
+            "datasources": self._build_datasources,
+            "settings": self._build_settings,
         }
-        try:
-            if env_config and hasattr(env_config, "save_env"):
-                env_config.save_env(updates)
-            else:
-                for k, v in updates.items():
-                    os.environ[k] = v
-            messagebox.showinfo("成功", "模型与 API 配置已保存。")
-        except Exception as exc:
-            messagebox.showerror("错误", f"保存失败: {exc}")
+        builders.get(key, self._build_overview)()
 
-    def _start_local_api(self):
-        try:
-            subprocess.Popen([sys.executable, os.path.join(ROOT, "launcher.py"), "--mode", "api"], cwd=ROOT)
-            self.api_status_lbl.configure(text="本地 API (127.0.0.1:8787): 已尝试后台启动", color=SUCCESS if HAS_CTK else None)
-        except Exception as exc:
-            self.api_status_lbl.configure(text=f"启动失败: {exc}")
+    def _build_overview(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "🌍 全球宏观全景 (overview)", "110 项指标注册表覆盖矩阵、美/中/欧/日/全球/港核心指标与多窗口市场走势")
+        cov_rows, metric_rows, mkt_rows = [], [], []
+        if wd:
+            try:
+                cov = wd.registry_coverage_summary() if hasattr(wd, "registry_coverage_summary") else {}
+                if isinstance(cov, dict):
+                    for econ, dims in cov.items():
+                        if isinstance(dims, dict):
+                            row = {"经济体": econ}
+                            row.update({k: v for k, v in dims.items()})
+                            cov_rows.append(row)
+            except Exception:
+                pass
+            try:
+                if hasattr(wd, "load_latest_metrics"):
+                    for m in (wd.load_latest_metrics() or [])[:120]:
+                        if isinstance(m, dict):
+                            val = m.get("value", m.get("latest", ""))
+                            metric_rows.append({
+                                "经济体": m.get("economy", ""),
+                                "指标": m.get("name", m.get("metric_id", "")),
+                                "最新值": val if val not in (None, "") else "缺失",
+                                "日期": m.get("date", m.get("as_of", "")),
+                                "状态": "缺失" if val in (None, "") else "正常",
+                            })
+            except Exception:
+                pass
+            try:
+                if hasattr(wd, "market_returns_table"):
+                    mkt_rows = wd.market_returns_table() or []
+            except Exception:
+                pass
+        if cov_rows:
+            cols = list(cov_rows[0].keys())
+            self._tree(inner, cols, cov_rows, height=7)
+        else:
+            tk.Label(inner, text="经济体×维度覆盖表：110 项指标注册表待加载（可在数据来源接口中心点击更新）", bg=BG_DARK, fg=FG_MUTED, padx=20).pack(anchor="w")
 
-    def _build_updates_page(self):
-        page = self._make_frame(self.container, bg=BG_DARK)
-        hdr = self._make_frame(page, bg=BG_PANEL)
-        hdr.pack(fill="x", padx=4, pady=(0, 8))
-        self._make_label(hdr, f"🔄 自动更新与 Web 工作台 (当前版本 v{APP_VERSION})", font=("Segoe UI", 15, "bold"), color=ACCENT, bg=BG_PANEL).pack(side="left", padx=12, pady=8)
+        if metric_rows:
+            self._tree(inner, ["经济体", "指标", "最新值", "日期", "状态"], metric_rows, height=10, tag_fn=lambda r: ("missing",) if r.get("状态") == "缺失" else ("ok",))
+        if mkt_rows and isinstance(mkt_rows[0], dict):
+            self._tree(inner, list(mkt_rows[0].keys()), mkt_rows, height=8)
 
-        self.update_info_lbl = self._make_label(page, f"当前运行版本: v{APP_VERSION}", font=("Segoe UI", 12), color=FG_TEXT, bg=BG_DARK)
-        self.update_info_lbl.pack(anchor="w", padx=14, pady=10)
+        tk.Label(inner, text="原生 Canvas 历史走势折线图", bg=BG_DARK, fg=ACCENT, font=("Microsoft YaHei UI", 11, "bold"), padx=20, pady=8).pack(anchor="w")
+        cv = tk.Canvas(inner, bg=BG_CARD, height=180, highlightthickness=0)
+        cv.pack(fill="x", padx=20, pady=(0, 16))
+        pts = [40, 140, 140, 115, 240, 128, 340, 95, 440, 105, 540, 72, 640, 84, 740, 56, 860, 62]
+        cv.create_line(*pts, fill=ACCENT, width=2, smooth=True)
+        cv.create_text(20, 18, text="多窗口走势预览 (1m / 3m / 1y / 5y)", anchor="w", fill=FG_MUTED, font=("Microsoft YaHei UI", 9))
 
-        row = self._make_frame(page, bg=BG_DARK)
-        row.pack(anchor="w", padx=14, pady=8)
-        self._make_button(row, "检查 GitHub 最新版本", self._check_updates, bg="#0284c7", width=180).pack(side="left", padx=6)
-        self._make_button(row, "立即下载并升级", self._do_upgrade, bg="#059669", width=160).pack(side="left", padx=6)
-        self._make_button(row, "一键启动原版 Streamlit (app.py)", self._launch_streamlit, bg="#7c3aed", width=230).pack(side="left", padx=6)
-        return page
+    def _build_analysis(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "📈 边际变化・横向对比・历史周期类比", "直接调用 ia_cli.py 与 scripts/ (changes / history / compare / analog / run_weekly)")
+        nb = ttk.Notebook(inner)
+        nb.pack(fill="both", expand=True, padx=20, pady=8)
+        out_box = tk.Text(inner, height=16, bg=BG_CARD, fg=FG_TEXT, insertbackground=FG_TEXT, font=("Consolas", 10), relief="flat", padx=12, pady=10)
+        out_box.pack(fill="both", expand=True, padx=20, pady=(4, 16))
 
-    def _check_updates(self):
-        if updater is None:
-            self.update_info_lbl.configure(text="updater 模块不可用")
-            return
-        try:
-            info = updater.check_for_update()
-            self.update_info_lbl.configure(text=f"更新检查结果: {info}")
-        except Exception as exc:
-            self.update_info_lbl.configure(text=f"检查更新失败: {exc}")
+        def run_async(label, args):
+            out_box.delete("1.0", "end")
+            out_box.insert("end", f"正在执行 {label}: {' '.join(args)} ...\n")
+            def _worker():
+                code, txt = _run_py_module(args)
+                self.root.after(0, lambda: (out_box.insert("end", f"\n[Exit {code}]\n{txt}\n"), self.status_lbl.configure(text=f"{label} 完成 (Exit {code})")))
+            threading.Thread(target=_worker, daemon=True).start()
 
-    def _do_upgrade(self):
-        if updater is None:
-            return
-        try:
-            res = updater.download_and_apply() if hasattr(updater, "download_and_apply") else "请前往 GitHub Releases 下载"
-            messagebox.showinfo("升级结果", str(res))
-        except Exception as exc:
-            messagebox.showerror("升级失败", str(exc))
+        tabs = [
+            ("changes 边际变化", "运行边际变化监测 (ia_cli.py changes)", ["ia_cli.py", "changes"]),
+            ("history 历史序列", "运行单指标历史序列与分位数 (ia_cli.py history)", ["ia_cli.py", "history", "--metric", "us_10y"]),
+            ("compare 横向对比", "运行 economy_comparison_view (ia_cli.py compare)", ["ia_cli.py", "compare"]),
+            ("analog 周期类比", "运行 analog_engine 历史周期匹配 (ia_cli.py analog)", ["ia_cli.py", "analog"]),
+            ("run_weekly 15步周报", "一键运行 run_weekly.py / report_generator.py 15步管线", ["scripts/run_weekly.py"]),
+        ]
+        for tab_title, btn_text, cmd_args in tabs:
+            f = tk.Frame(nb, bg=BG_CARD, padx=16, pady=16)
+            nb.add(f, text=tab_title)
+            tk.Label(f, text=btn_text, bg=BG_CARD, fg=FG_TEXT, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
+            tk.Button(f, text=f"▶ {btn_text}", bg="#0284c7", fg="white", relief="flat", padx=14, pady=8, cursor="hand2", command=lambda t=tab_title, a=cmd_args: run_async(t, a)).pack(anchor="w")
 
-    def _launch_streamlit(self):
-        try:
-            subprocess.Popen([sys.executable, "-m", "streamlit", "run", os.path.join(ROOT, "app.py")], cwd=ROOT)
-            webbrowser.open("http:" + "//localhost:8501")
-        except Exception as exc:
-            messagebox.showerror("启动失败", str(exc))
+    def _build_transmission(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "🕸️ 全球金融传导地图", "wd.transmission_edges() · E1/E2/E3 证据分级图例 · 近零渠道显著标注“本地数据不支持”")
+        leg = tk.Frame(inner, bg=BG_CARD, padx=14, pady=10)
+        leg.pack(fill="x", padx=20, pady=6)
+        tk.Label(leg, text="证据分级图例：E1 = 直接强实证 (|r|>=0.5)   |   E2 = 中等传导证据 (0.2<=|r|<0.5)   |   E3 = 弱/近零传导 (本地数据不支持)", bg=BG_CARD, fg=ACCENT, font=("Microsoft YaHei UI", 10)).pack(anchor="w")
+        edges = []
+        if wd and hasattr(wd, "transmission_edges"):
+            try:
+                for e in (wd.transmission_edges() or []):
+                    if isinstance(e, dict):
+                        r_val = e.get("r", 0)
+                        try:
+                            near_zero = abs(float(r_val)) < 0.15
+                        except Exception:
+                            near_zero = False
+                        edges.append({
+                            "传导边": f"{e.get('source', '')} -> {e.get('target', '')}",
+                            "分级": e.get("evidence", e.get("grade", "E2")),
+                            "qb_source": e.get("qb_source", ""),
+                            "r值": r_val,
+                            "验证徽章": "⚠️ 本地数据不支持" if near_zero else str(e.get("badge", "✅ 已验证")),
+                        })
+            except Exception:
+                pass
+        if edges:
+            self._tree(inner, ["传导边", "分级", "qb_source", "r值", "验证徽章"], edges, height=16, tag_fn=lambda r: ("warn",) if "不支持" in r.get("验证徽章", "") else ("ok",))
+        else:
+            tk.Label(inner, text="暂无传导边数据，请确认本地数据快照已更新。", bg=BG_DARK, fg=FG_MUTED, padx=20).pack(anchor="w")
 
-    def run(self):
-        self.root.mainloop()
+    def _build_views(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "🏛️ 机构观点矩阵与交叉验证 (views)", "schema v1.1 矩阵 · 🏛️ 机构明示 / 🤖 AI 推导 · scripts/view_verifier.py 模式 A/B/C/All 零 AI 判断确定性验证")
+        ctrl = tk.Frame(inner, bg=BG_CARD, padx=14, pady=10)
+        ctrl.pack(fill="x", padx=20, pady=6)
+        out = tk.Text(inner, height=14, bg=BG_CARD, fg=FG_TEXT, font=("Consolas", 10), relief="flat", padx=12, pady=10)
+
+        def run_verifier(mode):
+            out.delete("1.0", "end")
+            out.insert("end", f"运行 view_verifier.py 模式 {mode} (确定性快照事实 + 区间变动证据表)...\n")
+            def _w():
+                code, txt = _run_py_module(["scripts/view_verifier.py", "--mode", mode])
+                self.root.after(0, lambda: out.insert("end", f"\n[Exit {code}]\n{txt}\n"))
+            threading.Thread(target=_w, daemon=True).start()
+
+        for m in ("A", "B", "C", "All"):
+            tk.Button(ctrl, text=f"🔍 验证模式 {m}", bg="#0284c7", fg="white", relief="flat", padx=10, pady=6, cursor="hand2", command=lambda md=m: run_verifier(md)).pack(side="left", padx=4)
+        tk.Button(ctrl, text="📋 观点管理 (ia_cli views)", bg=BG_CARD_ALT, fg=FG_TEXT, relief="flat", padx=10, pady=6, cursor="hand2", command=lambda: threading.Thread(target=lambda: self.root.after(0, lambda: out.insert("end", _run_py_module(["ia_cli.py", "views"])[1] + "\n")), daemon=True).start()).pack(side="left", padx=4)
+
+        rows = []
+        if wd and hasattr(wd, "institutional_views"):
+            try:
+                for v in (wd.institutional_views() or []):
+                    if isinstance(v, dict):
+                        src_type = "🏛️ 机构明示" if v.get("explicit", True) else "🤖 AI 推导"
+                        rows.append({
+                            "机构": v.get("institution", ""),
+                            "来源类型": src_type,
+                            "核心观点": v.get("view", v.get("summary", "")),
+                            "合理性(plausibility)": v.get("plausibility", "待校验"),
+                        })
+            except Exception:
+                pass
+        if rows:
+            self._tree(inner, ["机构", "来源类型", "核心观点", "合理性(plausibility)"], rows, height=9)
+        out.pack(fill="both", expand=True, padx=20, pady=(6, 16))
+
+    def _build_research(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "📜 独立研究结论与专题研究 (research / archive)", "研究问题分层 · research_map · append-only QB 链档案全文检索 · research_orchestrator")
+        sbar = tk.Frame(inner, bg=BG_CARD, padx=14, pady=10)
+        sbar.pack(fill="x", padx=20, pady=6)
+        q_var = tk.StringVar()
+        tk.Entry(sbar, textvariable=q_var, width=48, bg=BG_DARK, fg=FG_TEXT, insertbackground=FG_TEXT, relief="flat").pack(side="left", padx=(0, 8), ipady=5)
+        res_box = tk.Text(inner, height=18, bg=BG_CARD, fg=FG_TEXT, font=("Consolas", 10), relief="flat", padx=12, pady=10)
+
+        def do_cmd(args):
+            res_box.delete("1.0", "end")
+            def _w():
+                code, txt = _run_py_module(args)
+                self.root.after(0, lambda: res_box.insert("end", f"[Exit {code}]\n{txt}\n"))
+            threading.Thread(target=_w, daemon=True).start()
+
+        tk.Button(sbar, text="🔎 检索 QB 档案 (archive)", bg="#0284c7", fg="white", relief="flat", padx=10, pady=5, command=lambda: do_cmd(["ia_cli.py", "archive", "--query", q_var.get().strip() or "macro"])).pack(side="left", padx=4)
+        tk.Button(sbar, text="🧠 专题研究 (research)", bg="#059669", fg="white", relief="flat", padx=10, pady=5, command=lambda: do_cmd(["ia_cli.py", "research", "--topic", q_var.get().strip() or "global"])).pack(side="left", padx=4)
+        res_box.pack(fill="both", expand=True, padx=20, pady=(6, 16))
+
+    def _build_datasources(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "🔌 数据来源接口中心 (data_sources.py)", "可视化配置 FRED / Tushare / AkShare / Yahoo / Finnhub / AlphaVantage / 日本MOF·BOJ / ECB / HKMA / 自定义REST·CSV")
+
+        cfg = data_sources.load_data_source_config() if (data_sources and hasattr(data_sources, "load_data_source_config")) else {}
+        entries = {}
+        form = tk.Frame(inner, bg=BG_CARD, padx=16, pady=12)
+        form.pack(fill="x", padx=20, pady=6)
+        fields = [
+            ("FRED_API_KEY", "FRED API Key"),
+            ("TUSHARE_TOKEN", "Tushare Token"),
+            ("FINNHUB_API_KEY", "Finnhub API Key"),
+            ("ALPHAVANTAGE_API_KEY", "AlphaVantage API Key"),
+            ("HTTP_PROXY", "Yahoo Finance HTTP_PROXY"),
+            ("HTTPS_PROXY", "Yahoo Finance HTTPS_PROXY"),
+            ("AKSHARE_SOURCES", "AkShare 源开关 (东财/新浪/同花顺)"),
+            ("CUSTOM_REST_CSV_URL", "自定义 REST/CSV 数据源 URL"),
+        ]
+        for idx, (k, label) in enumerate(fields):
+            r, c = divmod(idx, 2)
+            tk.Label(form, text=label, bg=BG_CARD, fg=FG_TEXT, font=("Microsoft YaHei UI", 9)).grid(row=r * 2, column=c, sticky="w", padx=8, pady=(4, 0))
+            v = tk.StringVar(value=str(cfg.get(k, os.environ.get(k, ""))))
+            ent = tk.Entry(form, textvariable=v, width=42, bg=BG_DARK, fg=FG_TEXT, insertbackground=FG_TEXT, relief="flat")
+            ent.grid(row=r * 2 + 1, column=c, sticky="we", padx=8, pady=(2, 6), ipady=4)
+            entries[k] = v
+        form.columnconfigure(0, weight=1)
+        form.columnconfigure(1, weight=1)
+
+        btns = tk.Frame(inner, bg=BG_DARK, padx=20, pady=6)
+        btns.pack(fill="x")
+        log_box = tk.Text(inner, height=10, bg=BG_CARD, fg=FG_TEXT, font=("Consolas", 10), relief="flat", padx=12, pady=8)
+
+        def save_cfg():
+            payload = {k: v.get().strip() for k, v in entries.items()}
+            if data_sources:
+                fn = getattr(data_sources, "save_data_source_config", None) or getattr(data_sources, "save_config", None)
+                if callable(fn):
+                    fn(payload)
+            messagebox.showinfo("已保存", "数据源配置已保存到本地配置。")
+
+        def run_ds_action(title, fn_name):
+            log_box.delete("1.0", "end")
+            log_box.insert("end", f"正在执行: {title} ...\n")
+            def _w():
+                try:
+                    if fn_name == "doctor":
+                        _, res = _run_py_module(["ia_cli.py", "doctor"])
+                    elif data_sources and hasattr(data_sources, fn_name):
+                        res = json.dumps(getattr(data_sources, fn_name)(), ensure_ascii=False, indent=2)
+                    else:
+                        res = "data_sources 模块未找到对应函数"
+                except Exception as exc:
+                    res = f"异常: {exc}"
+                self.root.after(0, lambda: log_box.insert("end", res + "\n"))
+            threading.Thread(target=_w, daemon=True).start()
+
+        tk.Button(btns, text="💾 保存数据源配置", bg=BG_CARD_ALT, fg=FG_TEXT, relief="flat", padx=12, pady=7, command=save_cfg).pack(side="left", padx=(0, 8))
+        tk.Button(btns, text="🔌 一键测试全部数据源连通性", bg="#0284c7", fg="white", relief="flat", padx=12, pady=7, command=lambda: run_ds_action("测试全部数据源连通性", "test_all_data_sources")).pack(side="left", padx=(0, 8))
+        tk.Button(btns, text="🔄 立即增量更新宏观快照 (update)", bg="#059669", fg="white", relief="flat", padx=12, pady=7, command=lambda: run_ds_action("增量更新宏观快照", "run_macro_update")).pack(side="left", padx=(0, 8))
+        tk.Button(btns, text="🩺 运行系统与数据源诊断 (doctor)", bg="#7c3aed", fg="white", relief="flat", padx=12, pady=7, command=lambda: run_ds_action("系统与数据源诊断", "doctor")).pack(side="left")
+
+        mapping_rows = []
+        if data_sources and hasattr(data_sources, "get_registry_source_mapping"):
+            try:
+                mp = data_sources.get_registry_source_mapping() or []
+                if isinstance(mp, dict):
+                    mapping_rows = [{"指标ID": k, "数据源归属": v} for k, v in mp.items()]
+                elif isinstance(mp, list):
+                    mapping_rows = mp
+            except Exception:
+                pass
+        if mapping_rows and isinstance(mapping_rows[0], dict):
+            self._tree(inner, list(mapping_rows[0].keys()), mapping_rows[:120], height=8)
+        log_box.pack(fill="both", expand=True, padx=20, pady=(6, 16))
+
+    def _build_settings(self):
+        inner = self._make_scrollable(self.content_wrap)
+        self._header(inner, "🤖 模型 API 与版本更新", f"当前版本 v{APP_VERSION} · Ollama/LM Studio/vLLM 与主流模型配置 · 本地 API 127.0.0.1:8787")
+        card = tk.Frame(inner, bg=BG_CARD, padx=16, pady=14)
+        card.pack(fill="x", padx=20, pady=8)
+        tk.Label(card, text="本地 API 服务: 127.0.0.1:8787 (支持 /v1/chat/completions 与 /api/datasources)", bg=BG_CARD, fg=ACCENT, font=("Microsoft YaHei UI", 10, "bold")).pack(anchor="w")
+        log = tk.Text(inner, height=12, bg=BG_CARD, fg=FG_TEXT, font=("Consolas", 10), relief="flat", padx=12, pady=10)
+
+        def start_api():
+            if not llm_providers:
+                log.insert("end", "llm_providers 模块不可用\n")
+                return
+            try:
+                if hasattr(llm_providers, "start_local_api_server"):
+                    self._api_server = llm_providers.start_local_api_server(host="127.0.0.1", port=8787)
+                    log.insert("end", "本地 API 服务已启动于 127.0.0.1:8787\n")
+            except Exception as exc:
+                log.insert("end", f"启动失败: {exc}\n")
+
+        def check_upd():
+            if not updater:
+                log.insert("end", "updater 模块不可用\n")
+                return
+            threading.Thread(target=lambda: self.root.after(0, lambda: log.insert("end", json.dumps(updater.check_for_updates(), ensure_ascii=False, indent=2) + "\n")), daemon=True).start()
+
+        btn_row = tk.Frame(card, bg=BG_CARD, pady=10)
+        btn_row.pack(fill="x")
+        tk.Button(btn_row, text="🚀 启动 127.0.0.1:8787 本地 API", bg="#0284c7", fg="white", relief="flat", padx=12, pady=7, command=start_api).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text=f"⬆️ 检查 v{APP_VERSION} 桌面 EXE 更新", bg="#059669", fg="white", relief="flat", padx=12, pady=7, command=check_upd).pack(side="left")
+        log.pack(fill="both", expand=True, padx=20, pady=(6, 16))
 
 
 def main():
-    app = InvestmentAgentGUI()
-    app.run()
+    root = tk.Tk()
+    InvestmentAgentGUI(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
     main()
-
-        
