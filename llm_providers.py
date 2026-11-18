@@ -423,16 +423,38 @@ def make_api_handler(default_config: dict[str, Any] | None = None):
                 except Exception as exc:
                     self._send_json(500, {"error": str(exc)})
                 return
+            if self.path == "/api/datasources":
+                try:
+                    import data_sources
+                    self._send_json(200, {"datasources": data_sources.list_data_sources(), "registry_mapping": data_sources.get_registry_source_mapping()})
+                except Exception as exc:
+                    self._send_json(500, {"error": str(exc)})
+                return
             self._send_json(404, {"error": "Not found"})
 
         def do_POST(self) -> None:
-            if self.path != "/v1/chat/completions":
+            if self.path not in (/"v1/chat/completions", "/api/datasources"):
                 self._send_json(404, {"error": "Not found"})
                 return
             length = int(self.headers.get("Content-Length", "0") or 0)
             raw_body = self.rfile.read(length) if length > 0 else b"{}"
             try:
                 body = json.loads(raw_body.decode("utf-8"))
+                if self.path == "/api/datasources":
+                    import data_sources
+                    action = str(body.get("action", "save")).strip().lower()
+                    if action == "save":
+                        cfg_data = body.get("config") if isinstance(body.get("config"), dict) else body
+                        save_fn = getattr(data_sources, "save_data_source_config", None) or getattr(data_sources, "save_config", None)
+                        saved = save_fn(cfg_data) if callable(save_fn) else {}
+                        self._send_json(200, {"ok": True, "config": saved})
+                    elif action == "test":
+                        self._send_json(200, {"ok": True, "results": data_sources.test_all_data_sources()})
+                    elif action == "update":
+                        self._send_json(200, {"ok": True, "result": data_sources.run_macro_update()})
+                    else:
+                        self._send_json(400, {"error": f"Unknown action: {action}"})
+                    return
                 cfg = resolve_llm_config(
                     provider=body.get("provider"),
                     base_url=body.get("base_url"),
