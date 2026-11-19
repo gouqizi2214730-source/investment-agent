@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-APP_VERSION = "0.29.1"
+APP_VERSION = "0.30.0"
 UPSTREAM_REPO = "bojing951-hash/investment-agent"
 DEFAULT_REPO = os.environ.get("INVESTMENT_AGENT_UPDATE_REPO", "gouqizi2214730-source/investment-agent")
 DEFAULT_BRANCH = os.environ.get("INVESTMENT_AGENT_UPDATE_BRANCH", "main")
@@ -161,6 +161,7 @@ def perform_upgrade(
             capture_output=True,
             text=True,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return {
             "status": "git_pulled" if proc.returncode == 0 else "git_pull_failed",
