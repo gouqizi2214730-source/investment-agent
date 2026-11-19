@@ -37,7 +37,7 @@ def _enable_windows_hidpi() -> None:
             pass
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "InvestmentAgent.Desktop.0.30"
+            "InvestmentAgent.MacroWorkbench.0.31"
         )
     except Exception:
         pass
@@ -99,6 +99,12 @@ def _run_self_test() -> int:
         import updater
         import workbench_data  # noqa: F401
 
+        exe_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+        ico_candidates = [exe_dir / "app_icon_v031.ico", exe_dir / "icon.ico", exe_dir / "assets" / "icon.ico", exe_dir / "_internal" / "assets" / "icon.ico"]
+        ico_path = next((p for p in ico_candidates if p.is_file()), None)
+        assert ico_path is not None, f"Missing icon.ico in {[str(p) for p in ico_candidates]}"
+        _app = PySide6.QtWidgets.QApplication.instance() or PySide6.QtWidgets.QApplication([])
+        assert not PySide6.QtGui.QIcon(str(ico_path)).isNull(), f"QIcon is null for {ico_path}"
         sources = data_sources.list_data_sources()
         print(
             f"SELF_TEST_OK version={updater.APP_VERSION} sources={len(sources)}"
