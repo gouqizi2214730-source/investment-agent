@@ -249,3 +249,73 @@ def run_macro_update() -> dict[str, Any]:
 
 def run_system_doctor() -> dict[str, Any]:
     return run_ia_cli_command(["doctor"], timeout=120)
+
+
+COLLECTOR_GROUPS: dict[str, dict[str, Any]] = {
+    "all": {
+        "label": "全部采集管线",
+        "scripts": [
+            "global_market_collector.py",
+            "us_macro_collector.py",
+            "eu_macro_collector.py",
+            "china_market_collector.py",
+            "japan_macro_collector.py",
+            "shiller_collector.py",
+            "rate_expectations_collector.py",
+            "data_assembler.py",
+        ],
+    },
+    "global": {"label": "全球市场", "scripts": ["global_market_collector.py", "data_assembler.py"]},
+    "macro": {"label": "美欧宏观 FRED/ECB", "scripts": ["us_macro_collector.py", "eu_macro_collector.py", "data_assembler.py"]},
+    "china": {"label": "中国与港股 AkShare/Tushare", "scripts": ["china_market_collector.py", "data_assembler.py"]},
+    "japan": {"label": "日本利率与市场", "scripts": ["japan_macro_collector.py", "data_assembler.py"]},
+    "valuation": {"label": "Shiller 与利率预期", "scripts": ["shiller_collector.py", "rate_expectations_collector.py", "data_assembler.py"]},
+}
+
+
+def run_macro_update_with_progress(group: str = "all", progress_cb: Any = None) -> dict[str, Any]:
+    cfg = COLLECTOR_GROUPS.get(group, COLLECTOR_GROUPS["all"])
+    scripts_dir = Path(env_config.PROJECT_ROOT) / "scripts"
+    candidates = [scripts_dir / name for name in cfg["scripts"] if (scripts_dir / name).exists()]
+    if group == "all" and not candidates and scripts_dir.exists():
+        candidates = sorted(p for p in scripts_dir.glob("*collector*.py"))
+        assembler = scripts_dir / "data_assembler.py"
+        if assembler.exists():
+            candidates.append(assembler)
+
+    if not candidates:
+        if progress_cb:
+            progress_cb(15, f"正在执行全量更新 ({cfg['label']})...")
+        res = run_macro_update()
+        if progress_cb:
+            progress_cb(100, "宏观快照更新完成" if res.get("ok") else "宏观快照更新结束")
+        return res
+
+    total = len(candidates)
+    logs: list[str] = []
+    all_ok = True
+    for idx, script_path in enumerate(candidates, start=1):
+        pct_start = int(((idx - 1) / total) * 90) + 5
+        if progress_cb:
+            progress_cb(pct_start, f"[{idx}/{total}] 正在运行 {script_path.name} ...")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=180,
+                cwd=str(env_config.PROJECT_ROOT),
+            )
+            if proc.returncode != 0:
+                all_ok = False
+            logs.append(f"=== {script_path.name} (rc={proc.returncode}) ===\n{proc.stdout}\n{proc.stderr}".strip())
+        except Exception as exc:
+            all_ok = False
+            logs.append(f"=== {script_path.name} (error) ===\n{exc}")
+        pct_done = int((idx / total) * 95)
+        if progress_cb:
+            progress_cb(pct_done, f"[{idx}/{total}] {script_path.name} 完成")
+
+    if progress_cb:
+        progress_cb(100, f"{cfg['label']} 采集完成")
+    return {"ok": all_ok, "returncode": 0 if all_ok else 1, "stdout": "\n\n".join(logs), "stderr": "", "group": group}
