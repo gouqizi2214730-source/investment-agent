@@ -1,5 +1,5 @@
 #define MyAppName "Investment Agent"
-#define MyAppVersion "0.30.1"
+#define MyAppVersion "0.31.0"
 #define MyAppExeName "InvestmentAgent.exe"
 
 [Setup]
@@ -21,6 +21,7 @@ WizardSizePercent=120,120
 SetupIconFile=..\assets\icon.ico
 UninstallDisplayIcon={app}\app_icon_v031.ico
 ChangesAssociations=yes
+CloseApplications=force
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
