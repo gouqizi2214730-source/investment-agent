@@ -69,6 +69,7 @@ jobs:
         shell: bash
         run: |
           python scripts/generate_icon.py
+          python -m py_compile gui_app.py launcher.py updater.py llm_providers.py data_sources.py
           pyinstaller --noconfirm --clean --onedir --name InvestmentAgent \
               --add-data "*.py;." \
             --noconsole --icon=assets/icon.ico --add-data "assets;assets" \
@@ -84,7 +85,7 @@ jobs:
           cp assets/icon.ico dist/InvestmentAgent/icon.ico
           cp assets/icon.png dist/InvestmentAgent/icon.png
       - name: Self-test InvestmentAgent-win64.exe
-        run: python -c "import os, subprocess, sys; r = subprocess.run([r'dist\InvestmentAgent\InvestmentAgent.exe', '--mode', 'self-test']); (print(open('self_test_error.log', encoding='utf-8', errors='replace').read()) if r.returncode != 0 and os.path.exists('self_test_error.log') else None); sys.exit(r.returncode)"
+        run: python -c "import subprocess, sys, os; r = subprocess.run([r'dist\InvestmentAgent\InvestmentAgent.exe', '--mode', 'self-test']); sys.stdout.buffer.write(open('self_test_error.log', 'rb').read()) if r.returncode != 0 and os.path.exists('self_test_error.log') else None; sys.exit(r.returncode)"
       - name: Build Inno Setup installer
         shell: pwsh
         run: |
