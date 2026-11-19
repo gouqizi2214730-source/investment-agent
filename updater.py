@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-APP_VERSION = "0.30.1"
+APP_VERSION = "0.31.0"
 UPSTREAM_REPO = "bojing951-hash/investment-agent"
 DEFAULT_REPO = os.environ.get("INVESTMENT_AGENT_UPDATE_REPO", "gouqizi2214730-source/investment-agent")
 DEFAULT_BRANCH = os.environ.get("INVESTMENT_AGENT_UPDATE_BRANCH", "main")
@@ -143,6 +143,12 @@ def perform_upgrade(
             return {"status": "no_exe_asset", **info}
         resp = requests.get(asset["download_url"], headers=_github_headers(), timeout=120)
         resp.raise_for_status()
+        asset_name = str(asset.get("name", ""))
+        if "setup" in asset_name.lower() and asset_name.lower().endswith(".exe"):
+            tmp_path = Path(tempfile.gettempdir()) / asset_name
+            tmp_path.write_bytes(resp.content)
+            subprocess.Popen([str(tmp_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return {"status": "silent_installer_started", "installer_path": str(tmp_path), "asset": asset_name, **info}
         staged = current_exe.with_suffix(".new.exe")
         staged.write_bytes(resp.content)
         bat_path = Path(tempfile.gettempdir()) / f"ia_upgrade_{os.getpid()}.bat"
