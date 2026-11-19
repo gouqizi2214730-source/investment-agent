@@ -1,5 +1,5 @@
 #define MyAppName "Investment Agent"
-#define MyAppVersion "0.29.1"
+#define MyAppVersion "0.30.0"
 #define MyAppExeName "InvestmentAgent.exe"
 
 [Setup]
@@ -17,6 +17,8 @@ OutputBaseFilename=InvestmentAgent-Setup-win64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+WizardSizePercent=120,120
+SetupIconFile=..\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
