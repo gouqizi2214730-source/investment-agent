@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Investment Agent 全球宏观投研工作台 v0.30.0 (PySide6 高分屏矢量现代金融终端 UI)"""
+"""Investment Agent 全球宏观投研工作台 v0.31.0 (PySide6 高分屏矢量现代金融终端 UI)"""
 
 import os
 import sys
@@ -24,16 +24,16 @@ if sys.platform == "win32":
     except Exception:
         pass
 from PySide6.QtCore import Qt, QObject, Signal, QPointF, QTimer
-from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QPainter, QPen, QLinearGradient, QBrush
+from PySide6.QtGui import QIcon, QPixmap, QFont, QColor, QPainter, QPen, QLinearGradient, QBrush, QAction
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QListWidget, QListWidgetItem, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QPlainTextEdit,
     QLineEdit, QComboBox, QFormLayout, QFrame, QSplitter, QScrollArea,
-    QMessageBox, QProgressBar, QGroupBox, QAbstractItemView
+    QMessageBox, QProgressBar, QGroupBox, QAbstractItemView, QFileDialog, QSystemTrayIcon, QMenu, QCheckBox
 )
 
-APP_VERSION = "0.30.0"
+APP_VERSION = "0.31.0"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 WORK_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
@@ -265,7 +265,8 @@ QScrollBar::handle:vertical {
 class WorkerSignals(QObject):
     finished = Signal(str, str)
     error = Signal(str, str)
-
+    chunk_signal = Signal(str)
+    progress_signal = Signal(int, str)
 
 class TrendChartWidget(QWidget):
     """QPainter 抗锯齿矢量折线走势图控件"""
@@ -275,6 +276,13 @@ class TrendChartWidget(QWidget):
         self.series = []
         self.labels = []
         self.setMinimumHeight(210)
+      self.setMouseTracking(True)
+        self._hover_idx = -1
+        self.sec_series = []
+        self.sec_labels = []
+        self.sec_label = ""
+        self.sec_unit = ""
+
 
     def set_data(self, title: str, labels: list, values: list):
         self.title = title
@@ -282,6 +290,32 @@ class TrendChartWidget(QWidget):
         self.series = [float(v) for v in (values or []) if v is not None]
         self.update()
 
+    def set_secondary_series(self, dates, values, label: str = "", unit: str = ""):
+        self.sec_labels = dates or []
+        self.sec_series = [float(v) for v in (values or []) if v is not None]
+        self.sec_label = label or ""
+        self.sec_unit = unit or ""
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if len(self.series) >= 2:
+            w = self.width()
+            pad_l = 50
+            pad_r = 56 if len(self.sec_series) >= 2 else 20
+            cw = max(10, w - pad_l - pad_r)
+            x = event.position().x()
+            ratio = max(0.0, min(1.0, (x - pad_l) / cw))
+            idx = round(ratio * (len(self.series) - 1))
+            if idx != self._hover_idx:
+                self._hover_idx = idx
+                self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        if self._hover_idx != -1:
+            self._hover_idx = -1
+            self.update()
+        super().leaveEvent(event)
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -296,7 +330,7 @@ class TrendChartWidget(QWidget):
             painter.setPen(QColor("#64748B"))
             painter.drawText(14, h // 2, "暂无足够时间序列数据（点击或选择指标加载）")
             return
-        pad_l, pad_r, pad_t, pad_b = 50, 20, 38, 28
+        pad_l, pad_r, pad_t, pad_b = 50, (56 if len(self.sec_series) >= 2 else 20), 38, 28
         pw, ph = max(10, w - pad_l - pad_r), max(10, h - pad_t - pad_b)
         mn, mx = min(self.series), max(self.series)
         span = (mx - mn) or 1.0
@@ -326,6 +360,44 @@ class TrendChartWidget(QWidget):
             painter.setFont(QFont("Microsoft YaHei UI", 8))
             painter.drawText(pad_l, h - 8, str(self.labels[0]))
             painter.drawText(w - pad_r - 60, h - 8, str(self.labels[-1]))
+        if len(self.sec_series) >= 2:
+            smn, smx = min(self.sec_series), max(self.sec_series)
+            sspan = (smx - smn) or 1.0
+            painter.setPen(QColor("#10B981"))
+            painter.setFont(QFont("Microsoft YaHei UI", 8))
+            for i in range(4):
+                gy = pad_t + ph * i / 3.0
+                sval = smx - sspan * i / 3.0
+                painter.drawText(w - pad_r + 6, int(gy) + 4, f"{sval:.2f}")
+            spts = []
+            sn = len(self.sec_series)
+            for i, sv in enumerate(self.sec_series):
+                px = pad_l + (pw * i / max(1, sn - 1))
+                py = pad_t + ph * (1.0 - (sv - smn) / sspan)
+                spts.append(QPointF(px, py))
+            painter.setPen(QPen(QColor("#10B981"), 2.0, Qt.PenStyle.DashDotLine))
+            for i in range(len(spts) - 1):
+                painter.drawLine(spts[i], spts[i + 1])
+            if self.sec_label:
+                painter.setPen(QColor("#10B981"))
+                painter.drawText(w - pad_r - 140, 24, f"副轴: {self.sec_label}")
+        if 0 <= self._hover_idx < len(pts):
+            hp = pts[self._hover_idx]
+            painter.setPen(QPen(QColor("#94A3B8"), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(int(hp.x()), pad_t, int(hp.x()), h - pad_b)
+            painter.drawLine(pad_l, int(hp.y()), w - pad_r, int(hp.y()))
+            dt = str(self.labels[self._hover_idx]) if self._hover_idx < len(self.labels) else ""
+            tip = f"{dt} | 主: {self.series[self._hover_idx]:.2f}"
+            if self._hover_idx < len(self.sec_series):
+                tip += f" | 副: {self.sec_series[self._hover_idx]:.2f}{self.sec_unit}"
+            bx = min(max(pad_l, int(hp.x()) + 8), max(pad_l, w - 210))
+            by = max(pad_t, int(hp.y()) - 26)
+            painter.setBrush(QBrush(QColor("#0F172A")))
+            painter.setPen(QPen(QColor("#38BDF8"), 1))
+            painter.drawRoundedRect(bx, by, 200, 22, 4, 4)
+            painter.setPen(QColor("#F8FAFC"))
+            painter.setFont(QFont("Microsoft YaHei UI", 8))
+            painter.drawText(bx + 6, by + 15, tip)
 
 def _make_kpi_card(title: str, value: str, accent: str = "#38BDF8"):
     card = QFrame()
@@ -362,6 +434,8 @@ class InvestmentAgentWindow(QMainWindow):
         self.signals = WorkerSignals()
         self.signals.finished.connect(self._on_bg_finished)
         self.signals.error.connect(self._on_bg_error)
+        self.signals.chunk_signal.connect(self._on_ai_chunk)
+        self.signals.progress_signal.connect(self._on_source_progress)
         self._bg_callbacks = {}
 
         central = QWidget()
@@ -430,6 +504,7 @@ class InvestmentAgentWindow(QMainWindow):
 
         self.nav_list.currentRowChanged.connect(self.stack.setCurrentIndex)
         QTimer.singleShot(150, self._initial_load)
+        self._init_tray_and_scheduler()
 
     def _initial_load(self):
         self._load_macro_data()
@@ -503,6 +578,14 @@ class InvestmentAgentWindow(QMainWindow):
         self.tbl_market = _make_table(["资产/指标", "最新", "1m 变化", "3m 变化", "1y 变化", "5y 变化"])
         self.tbl_market.cellClicked.connect(self._on_market_row_clicked)
         self.trend_chart = TrendChartWidget("市场趋势走势图 (点击上方资产行切换)")
+        sec_bar = QHBoxLayout()
+        sec_bar.addWidget(QLabel("副轴叠加对比指标:"))
+        self.sec_combo = QComboBox()
+        self.sec_combo.addItem("无 (仅主轴)", "")
+        self.sec_combo.currentIndexChanged.connect(self._on_secondary_changed)
+        sec_bar.addWidget(self.sec_combo)
+        sec_bar.addStretch()
+        mkt_lay.addLayout(sec_bar)
         mkt_lay.addWidget(self.tbl_market, 3)
         mkt_lay.addWidget(self.trend_chart, 2)
         tabs.addTab(mkt_w, "市场 1m/3m/1y/5y 多窗口变化与走势图")
@@ -571,13 +654,29 @@ class InvestmentAgentWindow(QMainWindow):
                 self.tbl_market.setItem(r, c, QTableWidgetItem(str(v)))
         if mkt_rows:
             self._on_market_row_clicked(0, 0)
+        if hasattr(self, "sec_combo"):
+            self.sec_combo.blockSignals(True)
+            self.sec_combo.clear()
+            self.sec_combo.addItem("无 (仅主轴)", "")
+            for idx, m in enumerate(mkt_rows):
+                self.sec_combo.addItem(str(m.get("name", f"指标{idx}")), idx)
+            self.sec_combo.blockSignals(False)
 
     def _on_market_row_clicked(self, row: int, _col: int):
         if hasattr(self, "_mkt_cache") and 0 <= row < len(self._mkt_cache):
             item = self._mkt_cache[row]
             series = item.get("series") or [1.0, 1.02, 1.01, 1.05]
             labels = item.get("dates") or [f"T-{len(series)-1-i}" for i in range(len(series))]
-            self.trend_chart.set_data(f"{item.get('name', '资产')} 走势", labels, series)
+     
+    def _on_secondary_changed(self):
+        idx = self.sec_combo.currentData() if hasattr(self, "sec_combo") else ""
+        if idx == "" or idx is None or not hasattr(self, "_mkt_cache") or not (0 <= int(idx) < len(self._mkt_cache)):
+            self.trend_chart.set_secondary_series([], [], "", "")
+            return
+        item = self._mkt_cache[int(idx)]
+        series = item.get("series") or [1.0, 1.01, 0.99, 1.03]
+        labels = item.get("dates") or [f"T-{len(series)-1-i}" for i in range(len(series))]
+        self.trend_chart.set_secondary_series(labels, series, str(item.get("name", "")), str(item.get("unit", "")))       self.trend_chart.set_data(f"{item.get('name', '资产')} 走势", labels, series)
 
     # 2. 边际变化・对比・类比
     def _build_analysis_page(self) -> QWidget:
@@ -603,6 +702,12 @@ class InvestmentAgentWindow(QMainWindow):
                 b.setObjectName("SuccessBtn")
             b.clicked.connect(lambda _=False, l=label, c=cmd: self._run_cli_analysis(l, c))
             btn_bar.addWidget(b)
+        btn_ai = QPushButton("🤖 AI 流式深度解读")
+        btn_ai.clicked.connect(self._run_ai_stream)
+        btn_bar.addWidget(btn_ai)
+        btn_exp = QPushButton("📄 导出当前报告 (Markdown / HTML)")
+        btn_exp.clicked.connect(self._export_analysis_report)
+        btn_bar.addWidget(btn_exp)
         btn_bar.addStretch()
         lay.addLayout(btn_bar)
 
@@ -833,6 +938,20 @@ class InvestmentAgentWindow(QMainWindow):
         for b in (btn_save, btn_test, btn_upd, btn_doc):
             hdr.addWidget(b)
         lay.addLayout(hdr)
+        prog_row = QHBoxLayout()
+        self.cmb_src_group = QComboBox()
+self.cmb_src_group.addItem("全部数据源 (all)", "all")
+_groups = getattr(data_sources, "COLLECTOR_GROUPS", {}) if data_sources else {}
+[self.cmb_src_group.addItem(f"{(v.get('name', k) if isinstance(v, dict) else k)} ({k})", k) for k, v in (_groups.items() if isinstance(_groups, dict) else [(g, g) for g in _groups])]
+btn_inc = QPushButton("⚡ 增量更新 (带进度)")
+btn_inc.setObjectName("PrimaryBtn")
+btn_inc.clicked.connect(self._run_macro_update_with_progress)
+self.src_progress = QProgressBar()
+self.src_progress.setRange(0, 100)
+self.lbl_src_prog = QLabel("就绪")
+[prog_row.addWidget(w) for w in (QLabel("采集分组:"), self.cmb_src_group, btn_inc, self.src_progress, self.lbl_src_prog)]
+prog_row.setStretchFactor(self.src_progress, 1)
+lay.addLayout(prog_row)
 
         tabs = QTabWidget()
         form_scroll = QScrollArea()
@@ -948,6 +1067,15 @@ class InvestmentAgentWindow(QMainWindow):
         btn_row.addStretch()
         fl.addRow(btn_row)
         lay.addWidget(card_llm)
+        tray_row = QHBoxLayout()
+        self.chk_min_to_tray = QCheckBox("关闭窗口时最小化到系统托盘")
+self.chk_min_to_tray.setChecked(True)
+self.chk_auto_update = QCheckBox("启用后台定时增量更新 (每 30 分钟)")
+self.chk_auto_update.toggled.connect(self._toggle_auto_update_timer)
+tray_row.addWidget(self.chk_min_to_tray)
+tray_row.addWidget(self.chk_auto_update)
+tray_row.addStretch()
+lay.addLayout(tray_row)
 
         card_api = QFrame()
         card_api.setObjectName("Card")
@@ -1016,7 +1144,151 @@ class InvestmentAgentWindow(QMainWindow):
             p = _run_subprocess([sys.executable, "updater.py", "--check"], timeout=60)
             return p.stdout or p.stderr or f"当前版本已是 v{APP_VERSION}"
         self._run_bg("update_check", _job, lambda out, err: self.model_upd_log.appendPlainText(err if err else out))
+    def _on_ai_chunk(self, chunk: str):
+        if hasattr(self, "analysis_out") and chunk:
+            cur = self.analysis_out.textCursor()
+            cur.movePosition(cur.MoveOperation.End)
+            cur.insertText(chunk)
+            self.analysis_out.setTextCursor(cur)
+            self.analysis_out.ensureCursorVisible()
+    def _run_ai_stream(self):
+        base_text = self.analysis_out.toPlainText().strip() if hasattr(self, "analysis_out") else ""
+        if hasattr(self, "analysis_out"):
+            self.analysis_out.appendPlainText("\n\n=== 🤖 AI 流式深度解读 ===\n")
+        prompt = f"请基于以下宏观与市场分析报告进行深度解读，给出核心逻辑、关键风险与配置建议：\n\n{base_text[:6000]}" if base_text else "请结合最新宏观与大类资产数据生成一份结构化投研深度解读报告。"
+        messages = [{"role": "system", "content": "你是专业的宏观与多资产配置投研分析师，请使用中文 Markdown 输出分析。"}, {"role": "user", "content": prompt}]
+        def _job():
+            if llm_providers and hasattr(llm_providers, "stream_chat_completion"):
+                cfg = env_config.load_env_dict() if (env_config and hasattr(env_config, "load_env_dict")) else {}
+                provider = cfg.get("LLM_PROVIDER", "") or (self.cmb_provider.currentText() if hasattr(self, "cmb_provider") else "")
+                model = cfg.get("LLM_MODEL", "") or (self.ed_model_name.text().strip() if hasattr(self, "ed_model_name") else "")
+                base_url = cfg.get("LLM_BASE_URL", "") or (self.ed_base_url.text().strip() if hasattr(self, "ed_base_url") else "")
+                api_key = cfg.get("LLM_API_KEY", "") or (self.ed_api_key.text().strip() if hasattr(self, "ed_api_key") else "")
+                try:
+                    return str(llm_providers.stream_chat_completion(messages=messages, provider=provider or None, model=model or None, base_url=base_url or None, api_key=api_key or None, on_chunk=lambda c: self.signals.chunk_signal.emit(str(c))) or "")
+                except TypeError:
+                    return str(llm_providers.stream_chat_completion(messages, on_chunk=lambda c: self.signals.chunk_signal.emit(str(c))) or "")
+            return "llm_providers.stream_chat_completion 不可用"
+        self._run_bg("AI 流式深度解读", _job, lambda out, err: self.analysis_out.appendPlainText(f"\n[错误] {err}") if (err and hasattr(self, "analysis_out")) else None)
 
+    def _export_analysis_report(self):
+        import html as _html
+        from datetime import datetime as _dt
+        from pathlib import Path as _Path
+        content = self.analysis_out.toPlainText() if hasattr(self, "analysis_out") else ""
+        if not content.strip():
+            QMessageBox.information(self, "提示", "当前没有可导出的分析报告内容。")
+            return
+        path, sel = QFileDialog.getSaveFileName(self, "导出分析报告", f"investment_report_{_dt.now().strftime('%Y%m%d_%H%M%S')}.md", "Markdown 文件 (*.md);;HTML 文件 (*.html);;所有文件 (*.*)")
+        if not path:
+            return
+        try:
+            is_html = path.lower().endswith(".html") or ("HTML" in sel and not path.lower().endswith(".md"))
+            if is_html:
+                path = path if path.lower().endswith(".html") else f"{path}.html"
+                out_text = f"<!DOCTYPE html><html lang='zh-CN'><head><meta charset='utf-8'><title>Investment Agent 分析报告</title><style>body{{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;background:#0f172a;color:#e2e8f0;line-height:1.7;}}pre{{white-space:pre-wrap;background:#1e293b;padding:20px;border-radius:10px;}}</style></head><body><h1>Investment Agent 分析报告</h1><pre>{_html.escape(content)}</pre></body></html>"
+            else:
+                path = path if path.lower().endswith(".md") else f"{path}.md"
+                out_text = content
+            _Path(path).write_text(out_text, encoding="utf-8")
+            QMessageBox.information(self, "导出成功", f"报告已成功导出至：\n{path}")
+        except Exception as e:
+            QMessageBox.warning(self, "导出失败", f"导出报告时出错：{e}")
+
+    def _run_macro_update_with_progress(self):
+        group_key = self.cmb_src_group.currentData() if hasattr(self, "cmb_src_group") else "all"
+        if hasattr(self, "src_progress"):
+            self.src_progress.setValue(0)
+        if hasattr(self, "lbl_src_prog"):
+            self.lbl_src_prog.setText("正在准备增量更新...")
+        if hasattr(self, "sources_log"):
+            self.sources_log.appendPlainText(f">>> 开始增量更新 (分组: {group_key})...")
+        def _job():
+            if data_sources and hasattr(data_sources, "run_macro_update_with_progress"):
+                def _cb(*args):
+                    if len(args) >= 2 and isinstance(args[0], (int, float)):
+                        pct, msg = int(args[0]), str(args[1])
+                    elif len(args) >= 3 and isinstance(args[0], (int, float)) and isinstance(args[1], (int, float)):
+                        pct, msg = int(int(args[0]) * 100 / max(1, int(args[1]))), str(args[2])
+                    else:
+                        pct, msg = 50, " ".join(str(a) for a in args)
+                    self.signals.progress_signal.emit(max(0, min(100, pct)), msg)
+                try:
+                    res = data_sources.run_macro_update_with_progress(group=group_key, on_progress=_cb)
+                except TypeError:
+                    try:
+                        res = data_sources.run_macro_update_with_progress(group_key, _cb)
+                    except TypeError:
+                        res = data_sources.run_macro_update_with_progress(_cb)
+                self.signals.progress_signal.emit(100, "增量更新完成")
+                return str(res)
+            return "data_sources.run_macro_update_with_progress 不可用"
+        self._run_bg("增量更新数据源", _job, lambda out, err: self.sources_log.appendPlainText(out or err or "完成") if hasattr(self, "sources_log") else None)
+
+    def _on_source_progress(self, pct: int, msg: str):
+        if hasattr(self, "src_progress"):
+            self.src_progress.setValue(max(0, min(100, int(pct))))
+        if hasattr(self, "lbl_src_prog"):
+            self.lbl_src_prog.setText(msg)
+        if hasattr(self, "sources_log") and msg:
+            self.sources_log.appendPlainText(f"[{pct}%] {msg}")
+
+    def _init_tray_and_scheduler(self):
+        self.tray_icon = None
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon = QSystemTrayIcon(self)
+            icon = self.windowIcon()
+            if icon.isNull():
+                icon = self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon)
+            self.tray_icon.setIcon(icon)
+            self.tray_icon.setToolTip(f"Investment Agent v{APP_VERSION}")
+            tray_menu = QMenu(self)
+            act_show = QAction("显示主窗口", self)
+            act_show.triggered.connect(self._show_from_tray)
+            act_update = QAction("立即增量更新数据", self)
+            act_update.triggered.connect(self._run_macro_update_with_progress)
+            act_quit = QAction("退出程序", self)
+            act_quit.triggered.connect(self._quit_from_tray)
+            tray_menu.addAction(act_show)
+            tray_menu.addAction(act_update)
+            tray_menu.addSeparator()
+            tray_menu.addAction(act_quit)
+            self.tray_icon.setContextMenu(tray_menu)
+            self.tray_icon.activated.connect(lambda r: self._show_from_tray() if r == QSystemTrayIcon.ActivationReason.DoubleClick else None)
+            self.tray_icon.show()
+        self._force_quit = False
+        self.update_timer = QTimer(self)
+        self.update_timer.setInterval(30 * 60 * 1000)
+        self.update_timer.timeout.connect(self._run_macro_update_with_progress)
+        if hasattr(self, "chk_auto_update") and self.chk_auto_update.isChecked():
+            self.update_timer.start()
+
+    def _toggle_auto_update_timer(self, enabled: bool):
+        if hasattr(self, "update_timer"):
+            if enabled:
+                self.update_timer.start()
+            else:
+                self.update_timer.stop()
+
+    def _show_from_tray(self):
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+
+    def _quit_from_tray(self):
+        self._force_quit = True
+        if self.tray_icon:
+            self.tray_icon.hide()
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        if not getattr(self, "_force_quit", False) and hasattr(self, "chk_min_to_tray") and self.chk_min_to_tray.isChecked() and self.tray_icon is not None:
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage("Investment Agent", "程序已最小化到系统托盘，双击图标可恢复窗口。", QSystemTrayIcon.MessageIcon.Information, 2500)
+            return
+        super().closeEvent(event)
+        
 
 def main() -> int:
     try:
