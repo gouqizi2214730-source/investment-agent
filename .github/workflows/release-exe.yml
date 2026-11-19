@@ -30,14 +30,14 @@ jobs:
             git remote add upstream https://github.com/bojing951-hash/investment-agent.git || git remote set-url upstream https://github.com/bojing951-hash/investment-agent.git
             git fetch upstream
             UPSTREAM_REF=$(git rev-parse --verify upstream/main 2>/dev/null || git rev-parse --verify upstream/master)
-            mkdir -p /tmp/custom_backup/.github/workflows
-            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py .github/workflows/release-exe.yml; do
+            mkdir -p /tmp/custom_backup/.github/workflows /tmp/custom_backup/installer
+            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py installer/investment-agent.iss .github/workflows/release-exe.yml; do
               if [ -f "$f" ]; then
                 cp "$f" "/tmp/custom_backup/$f"
               fi
             done
             git checkout "$UPSTREAM_REF" -- .
-            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py .github/workflows/release-exe.yml; do
+            for f in gui_app.py llm_providers.py updater.py launcher.py data_sources.py installer/investment-agent.iss .github/workflows/release-exe.yml; do
               if [ -f "/tmp/custom_backup/$f" ]; then
                 mkdir -p "$(dirname "$f")"
                 cp "/tmp/custom_backup/$f" "$f"
@@ -68,8 +68,8 @@ jobs:
       - name: Build InvestmentAgent-win64.exe
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onefile \
-            --name InvestmentAgent-win64 \
+          for mode_name in "--onefile --name InvestmentAgent-win64" "--onedir --name InvestmentAgent"; do
+                  pyinstaller --noconfirm --clean $mode_name \
             --add-data "*.py;." \
             --collect-all streamlit \
             --hidden-import llm_providers \
@@ -77,16 +77,26 @@ jobs:
             --paths . --paths scripts --collect-all customtkinter \
           --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" --add-data "audit;audit" --add-data "ops;ops" --add-data ".agents;.agents" \
           --hidden-import workbench_data --hidden-import gui_app --hidden-import data_sources --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
-          launcher.py
+          launcher.py 
+          done
             ls -lh dist/InvestmentAgent-win64.exe
       - name: Self-test InvestmentAgent-win64.exe
         run: .\dist\InvestmentAgent-win64.exe --mode self-test
-
-      - name: Release v0.29.0
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and -not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y }
+          if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") { $env:PATH += ";C:\Program Files (x86)\Inno Setup 6" }
+          iscc installer/investment-agent.iss
+          ls dist/InvestmentAgent-Setup-win64.exe
+          
+      - name: Release v0.29.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.29.0
-          name: Investment Agent v0.29.0 (Pure Native GUI & Data Source API Center)
-          files: dist/InvestmentAgent-win64.exe
+          tag_name: v0.29.1
+          name: Investment Agent v0.29.1 (Setup & Portable Windows EXE)
+          files: |
+            dist/InvestmentAgent-Setup-win64.exe
+            dist/InvestmentAgent-win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
