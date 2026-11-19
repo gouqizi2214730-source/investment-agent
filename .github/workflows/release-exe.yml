@@ -70,7 +70,7 @@ jobs:
         run: |
           python scripts/generate_icon.py
           pyinstaller --noconfirm --clean --onedir --name InvestmentAgent \
-          --add-data "*.py;." \
+              --add-data "*.py;." \
             --noconsole --icon=assets/icon.ico --add-data "assets;assets" \
             --collect-all streamlit \
             --hidden-import llm_providers \
@@ -97,7 +97,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.31.0
-          name: Investment Agent v031.0. (Desktop & Taskbar Custom Icons + PySide6 GUI)
+          name: Investment Agent v0.31.0 (Slim Setup, Dual-Axis Crosshair Chart, Streaming AI & System Tray)
           files: |
             dist/InvestmentAgent-Setup-win64.exe
         env:
