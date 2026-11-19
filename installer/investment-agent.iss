@@ -1,5 +1,5 @@
 #define MyAppName "Investment Agent"
-#define MyAppVersion "0.30.0"
+#define MyAppVersion "0.30.1"
 #define MyAppExeName "InvestmentAgent.exe"
 
 [Setup]
@@ -19,7 +19,8 @@ SolidCompression=yes
 WizardStyle=modern
 WizardSizePercent=120,120
 SetupIconFile=..\assets\icon.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayIcon={app}\app_icon_v031.ico
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -29,11 +30,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\InvestmentAgent\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\assets\icon.ico"; DestDir: "{app}"; DestName: "icon.ico"; Flags: ignoreversion
+Source: "..\assets\icon.ico"; DestDir: "{app}"; DestName: "app_icon_v031.ico"; Flags: ignoreversion
+Source: "..\assets\icon.png"; DestDir: "{app}"; DestName: "icon.png"; Flags: ignoreversion
+Source: "..\assets\icon.ico"; DestDir: "{app}\assets"; DestName: "icon.ico"; Flags: ignoreversion
+Source: "..\assets\icon.png"; DestDir: "{app}\assets"; DestName: "icon.png"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon_v031.ico"; AppUserModelID: "InvestmentAgent.MacroWorkbench.0.31"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon_v031.ico"; AppUserModelID: "InvestmentAgent.MacroWorkbench.0.31"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
