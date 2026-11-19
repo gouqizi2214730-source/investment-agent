@@ -20,7 +20,7 @@ if sys.platform == "win32":
         except Exception:
             pass
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("InvestmentAgent.Desktop.0.30")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("InvestmentAgent.MacroWorkbench.0.31")
     except Exception:
         pass
 from PySide6.QtCore import Qt, QObject, Signal, QPointF, QTimer
@@ -59,6 +59,43 @@ def _load_app_icon() -> QIcon:
         if p.exists():
             return QIcon(str(p))
     return QIcon()
+def generate_icon(target_path: str) -> str:
+    out = Path(target_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from scripts.generate_icon import build_icon
+        build_icon().save(str(out), format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
+        return str(out)
+    except Exception:
+        pass
+    try:
+        from PIL import Image, ImageDraw
+        img = Image.new("RGBA", (256, 256), (15, 23, 42, 255))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((16, 16, 240, 240), radius=48, fill=(30, 41, 59, 255), outline=(56, 189, 248, 255), width=8)
+        d.line([(56, 176), (108, 128), (144, 152), (200, 80)], fill=(56, 189, 248, 255), width=14)
+        img.save(str(out), format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
+    except Exception:
+        pass
+    return str(out)
+
+
+def _resolve_icon_path() -> str:
+    bases = [
+        os.path.dirname(sys.executable),
+        getattr(sys, "_MEIPASS", ""),
+        os.path.dirname(os.path.abspath(__file__)),
+    ]
+    for base in bases:
+        if not base:
+            continue
+        for rel in ("app_icon_v031.ico", "icon.ico", os.path.join("assets", "icon.ico"), os.path.join("_internal", "assets", "icon.ico")):
+            candidate = os.path.join(base, rel)
+            if os.path.isfile(candidate):
+                return candidate
+    fallback = os.path.expanduser(os.path.join("~", ".investment_agent", "app_icon_v031.ico"))
+    return generate_icon(fallback)
+    
 
 
 def _run_subprocess(cmd, cwd=None, timeout=180):
@@ -989,10 +1026,23 @@ def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("InvestmentAgent")
     app.setApplicationVersion(APP_VERSION)
-    app.setWindowIcon(_load_app_icon())
+    ico_path = _resolve_icon_path()
+    app.setWindowIcon(QIcon(ico_path))
     app.setStyleSheet(DARK_QSS)
     win = InvestmentAgentWindow()
+    window = win
+    window.setWindowIcon(QIcon(ico_path))
     win.show()
+    if sys.platform == "win32" and ico_path and os.path.isfile(str(ico_path)):
+        try:
+            hicon_big = ctypes.windll.user32.LoadImageW(0, str(ico_path), 1, 256, 256, 0x00000010)
+            hicon_small = ctypes.windll.user32.LoadImageW(0, str(ico_path), 1, 32, 32, 0x00000010)
+            if hicon_big:
+                ctypes.windll.user32.SendMessageW(int(window.winId()), 0x0080, 1, hicon_big)
+            if hicon_small:
+                ctypes.windll.user32.SendMessageW(int(window.winId()), 0x0080, 0, hicon_small)
+        except Exception:
+            pass
     return app.exec()
 
 
