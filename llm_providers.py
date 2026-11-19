@@ -497,3 +497,122 @@ def start_local_api_server(
 ) -> ThreadingHTTPServer:
     handler = make_api_handler(default_config=config)
     return ThreadingHTTPServer((host, port), handler)
+
+def stream_chat_completion(
+    prompt: str,
+    system_prompt: str = "You are a helpful macro and investment research assistant.",
+    config: dict[str, Any] | None = None,
+    on_chunk: Any = None,
+    temperature: float = 0.2,
+    max_tokens: int = 1024,
+    timeout: int = 90,
+) -> str:
+    cfg = config or resolve_llm_config()
+    if not cfg.get("complete"):
+        raise ValueError(f"Incomplete LLM config, missing: {', '.join(cfg.get('missing', []))}")
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    base_url = cfg["base_url"].rstrip("/")
+    api_key = cfg["api_key"] or "local"
+    model = cfg["model"]
+    api_style = cfg.get("api_style", "openai")
+
+    if api_style == "anthropic":
+        try:
+            url = base_url if base_url.endswith("/messages") else f"{base_url}/v1/messages"
+            payload: dict[str, Any] = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            }
+            if system_prompt:
+                payload["system"] = system_prompt
+            chunks: list[str] = []
+            with requests.post(
+                url,
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json=payload,
+                timeout=timeout,
+                stream=True,
+            ) as resp:
+                resp.raise_for_status()
+                for raw_line in resp.iter_lines(decode_unicode=True):
+                    if not raw_line:
+                        continue
+                    line = raw_line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        evt = json.loads(data_str)
+                    except Exception:
+                        continue
+                    if evt.get("type") == "content_block_delta":
+                        delta = (evt.get("delta") or {}).get("text", "")
+                        if delta:
+                            chunks.append(delta)
+                            if on_chunk:
+                                on_chunk(delta)
+            full_text = "".join(chunks)
+            if full_text:
+                return full_text
+        except Exception:
+            pass
+    else:
+        try:
+            url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
+            with requests.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": True},
+                timeout=timeout,
+                stream=True,
+            ) as resp:
+                resp.raise_for_status()
+                ctype = (resp.headers.get("content-type") or "").lower()
+                if "application/json" in ctype and "event-stream" not in ctype:
+                    data = resp.json()
+                    choices = data.get("choices") or []
+                    content = (choices[0].get("message") or {}).get("content", "") if choices and isinstance(choices[0], dict) else ""
+                    if content and on_chunk:
+                        on_chunk(content)
+                    return content
+                chunks = []
+                for raw_line in resp.iter_lines(decode_unicode=True):
+                    if not raw_line:
+                        continue
+                    line = raw_line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        evt = json.loads(data_str)
+                    except Exception:
+                        continue
+                    choices = evt.get("choices") or []
+                    if choices and isinstance(choices[0], dict):
+                        delta = (choices[0].get("delta") or {}).get("content") or ""
+                        if delta:
+                            chunks.append(delta)
+                            if on_chunk:
+                                on_chunk(delta)
+                full_text = "".join(chunks)
+                if full_text:
+                    return full_text
+        except Exception:
+            pass
+
+    res = chat_completion(messages, config=cfg, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
+    text = res.get("content", "")
+    if text and on_chunk:
+        on_chunk(text)
+    return text
