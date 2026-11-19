@@ -667,16 +667,18 @@ class InvestmentAgentWindow(QMainWindow):
             item = self._mkt_cache[row]
             series = item.get("series") or [1.0, 1.02, 1.01, 1.05]
             labels = item.get("dates") or [f"T-{len(series)-1-i}" for i in range(len(series))]
-     
+             self.trend_chart.set_data(f"{item.get('name', '资产')} 走势", labels, series)
+            
     def _on_secondary_changed(self):
         idx = self.sec_combo.currentData() if hasattr(self, "sec_combo") else ""
+        
         if idx == "" or idx is None or not hasattr(self, "_mkt_cache") or not (0 <= int(idx) < len(self._mkt_cache)):
             self.trend_chart.set_secondary_series([], [], "", "")
             return
         item = self._mkt_cache[int(idx)]
         series = item.get("series") or [1.0, 1.01, 0.99, 1.03]
         labels = item.get("dates") or [f"T-{len(series)-1-i}" for i in range(len(series))]
-        self.trend_chart.set_secondary_series(labels, series, str(item.get("name", "")), str(item.get("unit", "")))       self.trend_chart.set_data(f"{item.get('name', '资产')} 走势", labels, series)
+        self.trend_chart.set_secondary_series(labels, series, str(item.get("name", "")), str(item.get("unit", "")))      
 
     # 2. 边际变化・对比・类比
     def _build_analysis_page(self) -> QWidget:
