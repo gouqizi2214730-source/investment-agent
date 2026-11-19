@@ -276,7 +276,7 @@ class TrendChartWidget(QWidget):
         self.series = []
         self.labels = []
         self.setMinimumHeight(210)
-      self.setMouseTracking(True)
+        self.setMouseTracking(True)
         self._hover_idx = -1
         self.sec_series = []
         self.sec_labels = []
