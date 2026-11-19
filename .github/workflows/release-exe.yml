@@ -68,9 +68,8 @@ jobs:
       - name: Build InvestmentAgent-win64.exe
         shell: bash
         run: |
-          for mode_name in "--onefile --name InvestmentAgent-win64" "--onedir --name InvestmentAgent"; do
-                  pyinstaller --noconfirm --clean $mode_name \
-            --add-data "*.py;." \
+          pyinstaller --noconfirm --clean --onedir --name InvestmentAgent \
+          --add-data "*.py;." \
             --collect-all streamlit \
             --hidden-import llm_providers \
             --hidden-import updater \
@@ -78,10 +77,8 @@ jobs:
           --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" --add-data "audit;audit" --add-data "ops;ops" --add-data ".agents;.agents" \
           --hidden-import workbench_data --hidden-import gui_app --hidden-import data_sources --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
           launcher.py 
-          done
-            ls -lh dist/InvestmentAgent-win64.exe
       - name: Self-test InvestmentAgent-win64.exe
-        run: .\dist\InvestmentAgent-win64.exe --mode self-test
+        run: .\dist\InvestmentAgent\InvestmentAgent.exe --mode self-test
       - name: Build Inno Setup installer
         shell: pwsh
         run: |
@@ -94,9 +91,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.29.1
-          name: Investment Agent v0.29.1 (Setup & Portable Windows EXE)
+          name: Investment Agent v0.29.1 (Windows Setup Installer)
           files: |
             dist/InvestmentAgent-Setup-win64.exe
-            dist/InvestmentAgent-win64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
