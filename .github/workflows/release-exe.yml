@@ -78,7 +78,7 @@ jobs:
             --paths . --paths scripts --collect-all customtkinter \
           --add-data "scripts;scripts" --add-data "config;config" --add-data "data;data" --add-data "docs;docs" --add-data "examples;examples" --add-data "audit;audit" --add-data "ops;ops" --add-data ".agents;.agents" \
           --hidden-import workbench_data --hidden-import gui_app --hidden-import data_sources --hidden-import ia_cli --hidden-import env_config --hidden-import view_verifier --hidden-import view_store --hidden-import view_plausibility --hidden-import research_map --hidden-import research_archive \
-          launcher.py 
+         --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.QtWebEngineWidgets --exclude-module PySide6.QtWebEngineQuick --exclude-module PySide6.Qt3DCore --exclude-module PySide6.Qt3DRender --exclude-module PySide6.Qt3DInput --exclude-module PySide6.Qt3DLogic --exclude-module PySide6.Qt3DExtras --exclude-module PySide6.Qt3DAnimation --exclude-module PySide6.QtMultimedia --exclude-module PySide6.QtMultimediaWidgets --exclude-module PySide6.QtQuick --exclude-module PySide6.QtQuickWidgets --exclude-module PySide6.QtQml --exclude-module PySide6.QtBluetooth --exclude-module PySide6.QtNfc --exclude-module PySide6.QtPositioning --exclude-module PySide6.QtSensors --exclude-module PySide6.QtSerialPort --exclude-module PySide6.QtSql --exclude-module PySide6.QtTest --exclude-module PySide6.QtCharts --exclude-module PySide6.QtDataVisualization --exclude-module PySide6.QtPdf --exclude-module PySide6.QtPdfWidgets  launcher.py 
           cp -r assets dist/InvestmentAgent/assets || true
           cp assets/icon.ico dist/InvestmentAgent/app_icon_v031.ico
           cp assets/icon.ico dist/InvestmentAgent/icon.ico
@@ -93,11 +93,11 @@ jobs:
           iscc installer/investment-agent.iss
           ls dist/InvestmentAgent-Setup-win64.exe
           
-      - name: Release v0.30.1
+      - name: Release v0.31.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.30.1
-          name: Investment Agent v0.30.1 (Desktop & Taskbar Custom Icons + PySide6 GUI)
+          tag_name: v0.31.0
+          name: Investment Agent v031.0. (Desktop & Taskbar Custom Icons + PySide6 GUI)
           files: |
             dist/InvestmentAgent-Setup-win64.exe
         env:
