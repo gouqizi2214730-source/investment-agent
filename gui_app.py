@@ -940,7 +940,7 @@ class InvestmentAgentWindow(QMainWindow):
         for b in (btn_save, btn_test, btn_upd, btn_doc):
             hdr.addWidget(b)
         lay.addLayout(hdr)
-       prog_row = QHBoxLayout()
+    prog_row = QHBoxLayout()
     self.cmb_src_group = QComboBox()
     self.cmb_src_group.addItem("全部数据源 (all)", "all")
     _groups = getattr(data_sources, "COLLECTOR_GROUPS", {}) if data_sources else {}
