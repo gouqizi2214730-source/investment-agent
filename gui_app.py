@@ -940,7 +940,7 @@ class InvestmentAgentWindow(QMainWindow):
         for b in (btn_save, btn_test, btn_upd, btn_doc):
             hdr.addWidget(b)
         lay.addLayout(hdr)
-        prog_row = QHBoxLayout()
+    prog_row = QHBoxLayout()
         self.cmb_src_group = QComboBox()
 self.cmb_src_group.addItem("全部数据源 (all)", "all")
 _groups = getattr(data_sources, "COLLECTOR_GROUPS", {}) if data_sources else {}
@@ -955,13 +955,13 @@ self.lbl_src_prog = QLabel("就绪")
 prog_row.setStretchFactor(self.src_progress, 1)
 lay.addLayout(prog_row)
 
-        tabs = QTabWidget()
-        form_scroll = QScrollArea()
-        form_scroll.setWidgetResizable(True)
-        form_box = QWidget()
-        form = QFormLayout(form_box)
-        self.src_inputs = {}
-        fields = [
+    tabs = QTabWidget()
+    form_scroll = QScrollArea()
+    form_scroll.setWidgetResizable(True)
+    form_box = QWidget()
+    form = QFormLayout(form_box)
+    self.src_inputs = {}
+    fields = [
             ("FRED_API_KEY", "FRED API Key"),
             ("TUSHARE_TOKEN", "Tushare Token"),
             ("AKSHARE_ENABLED", "AkShare (true/false)"),
