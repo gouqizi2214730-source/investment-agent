@@ -940,20 +940,20 @@ class InvestmentAgentWindow(QMainWindow):
         for b in (btn_save, btn_test, btn_upd, btn_doc):
             hdr.addWidget(b)
         lay.addLayout(hdr)
-    prog_row = QHBoxLayout()
-        self.cmb_src_group = QComboBox()
-self.cmb_src_group.addItem("全部数据源 (all)", "all")
-_groups = getattr(data_sources, "COLLECTOR_GROUPS", {}) if data_sources else {}
-[self.cmb_src_group.addItem(f"{(v.get('name', k) if isinstance(v, dict) else k)} ({k})", k) for k, v in (_groups.items() if isinstance(_groups, dict) else [(g, g) for g in _groups])]
-btn_inc = QPushButton("⚡ 增量更新 (带进度)")
-btn_inc.setObjectName("PrimaryBtn")
-btn_inc.clicked.connect(self._run_macro_update_with_progress)
-self.src_progress = QProgressBar()
-self.src_progress.setRange(0, 100)
-self.lbl_src_prog = QLabel("就绪")
-[prog_row.addWidget(w) for w in (QLabel("采集分组:"), self.cmb_src_group, btn_inc, self.src_progress, self.lbl_src_prog)]
-prog_row.setStretchFactor(self.src_progress, 1)
-lay.addLayout(prog_row)
+       prog_row = QHBoxLayout()
+    self.cmb_src_group = QComboBox()
+    self.cmb_src_group.addItem("全部数据源 (all)", "all")
+    _groups = getattr(data_sources, "COLLECTOR_GROUPS", {}) if data_sources else {}
+    [self.cmb_src_group.addItem(f"{(v.get('name', k) if isinstance(v, dict) else k)} ({k})", k) for k, v in (_groups.items() if isinstance(_groups, dict) else [(g, g) for g in _groups])]
+    btn_inc = QPushButton("⚡ 增量更新 (带进度)")
+    btn_inc.setObjectName("PrimaryBtn")
+    btn_inc.clicked.connect(self._run_macro_update_with_progress)
+    self.src_progress = QProgressBar()
+    self.src_progress.setRange(0, 100)
+    self.lbl_src_prog = QLabel("就绪")
+    [prog_row.addWidget(w) for w in (QLabel("采集分组:"), self.cmb_src_group, btn_inc, self.src_progress, self.lbl_src_prog)]
+    prog_row.setStretchFactor(self.src_progress, 1)
+    lay.addLayout(prog_row)
 
     tabs = QTabWidget()
     form_scroll = QScrollArea()
