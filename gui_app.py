@@ -973,23 +973,23 @@ class InvestmentAgentWindow(QMainWindow):
             ("HKMA_ENDPOINT", "HKMA 香港金管局接口地址"),
             ("CUSTOM_SOURCE_URL", "自定义数据源 URL"),
         ]
-        for key, label in fields:
-            le = QLineEdit()
-            if "KEY" in key or "TOKEN" in key:
-                le.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
-            self.src_inputs[key] = le
-            form.addRow(label, le)
-        form_scroll.setWidget(form_box)
-        tabs.addTab(form_scroll, "数据源配置表单")
+      for key, label in fields:
+          le = QLineEdit()
+          if "KEY" in key or "TOKEN" in key:
+              le.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+          self.src_inputs[key] = le
+          form.addRow(label, le)
+      form_scroll.setWidget(form_box)
+      tabs.addTab(form_scroll, "数据源配置表单")
 
-        self.tbl_source_map = _make_table(["指标 ID", "指标名称", "经济体", "主数据源", "备用数据源", "状态"])
-        tabs.addTab(self.tbl_source_map, "110 项指标数据源映射表")
+      self.tbl_source_map = _make_table(["指标 ID", "指标名称", "经济体", "主数据源", "备用数据源", "状态"])
+      tabs.addTab(self.tbl_source_map, "110 项指标数据源映射表")
 
-        self.sources_log = QPlainTextEdit()
-        self.sources_log.setReadOnly(True)
-        tabs.addTab(self.sources_log, "连通性测试 / update / doctor 输出")
-        lay.addWidget(tabs, 1)
-        return w
+      self.sources_log = QPlainTextEdit()
+      self.sources_log.setReadOnly(True)
+      tabs.addTab(self.sources_log, "连通性测试 / update / doctor 输出")
+      lay.addWidget(tabs, 1)
+      return w
 
     def _load_sources_data(self):
         cfg = {}
